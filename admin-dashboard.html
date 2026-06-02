@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Admin Dashboard - Pickle Social</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="icon" href="data:,">
+
+  <link rel="stylesheet" href="css/admin-dashboard.css">
+</head>
+
+<body>
+
+<nav>
+  <div class="nav-brand">
+    <img src="logo.jpeg" alt="Pickle Social logo" class="nav-logo">
+    Pickle Social <span>Admin Dashboard</span>
+  </div>
+  <div class="nav-actions">
+    <button class="btn-secondary" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<main>
+  <div class="container">
+    <!-- Header -->
+    <div class="dashboard-header">
+      <div class="dashboard-title">
+        <h1>Management Dashboard</h1>
+        <p class="dashboard-copy">Search bookings, manage payments, and export report data.</p>
+      </div>
+      <div class="header-controls">
+        <input type="text" id="searchInput" class="filter-input" placeholder="Search reference, name, phone" oninput="applyFilters()">
+        <select id="courtFilter" class="filter-input" onchange="applyFilters()">
+          <option value="">All Courts</option>
+          <option value="Court One">Court One</option>
+          <option value="Court Two">Court Two</option>
+        </select>
+        <input type="date" id="filterFrom" class="filter-input" onchange="applyFilters()">
+        <select id="filterStatus" class="filter-input" onchange="applyFilters()">
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="paid">Paid</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <button class="btn-secondary" onclick="downloadCsv()">Export CSV</button>
+        <button class="btn-secondary" onclick="openTodayModal()">Today Summary</button>
+        <button class="btn-primary" onclick="refreshData()">Refresh</button>
+      </div>
+    </div>
+
+    <!-- Earnings Summary Cards -->
+    <div class="earnings-section">
+      <h2>Earnings Overview</h2>
+      <div class="earnings-grid">
+        <div class="earnings-card">
+          <div class="earnings-label">Today's Earnings</div>
+          <div class="earnings-amount" id="todayEarnings">₱0.00</div>
+          <div class="earnings-detail" id="todayCount">0 bookings</div>
+        </div>
+        <div class="earnings-card">
+          <div class="earnings-label">Weekly Earnings</div>
+          <div class="earnings-amount" id="weeklyEarnings">₱0.00</div>
+          <div class="earnings-detail" id="weeklyCount">0 bookings</div>
+        </div>
+        <div class="earnings-card">
+          <div class="earnings-label">Monthly Earnings</div>
+          <div class="earnings-amount" id="monthlyEarnings">₱0.00</div>
+          <div class="earnings-detail" id="monthlyCount">0 bookings</div>
+        </div>
+        <div class="earnings-card accent">
+          <div class="earnings-label">Pending Payments</div>
+          <div class="earnings-amount" id="pendingAmount">₱0.00</div>
+          <div class="earnings-detail" id="pendingCount">0 bookings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bookings Table -->
+    <div class="bookings-section">
+      <div class="bookings-toolbar">
+        <div>
+          <h2>Bookings</h2>
+          <div class="toolbar-copy">Select rows to perform bulk actions: mark paid, cancel, delete.</div>
+        </div>
+        <div class="bulk-actions" id="bulkActionsBar" style="display:none;">
+          <span id="selectedCount">0 selected</span>
+          <button class="btn-secondary" onclick="bulkMarkPaid()">Mark Paid</button>
+          <button class="btn-secondary" onclick="bulkCancel()">Cancel</button>
+          <button class="btn-secondary delete-btn" onclick="bulkDelete()">Delete</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="bookings-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"></th>
+              <th>Reference</th>
+              <th>Receipt Ref</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Court</th>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bookingsTableBody">
+            <tr>
+              <td colspan="11" class="loading-cell">Loading bookings...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      <button class="btn-secondary" id="prevPageBtn" onclick="previousPage()" disabled>← Previous</button>
+      <span id="pageInfo">Page 1</span>
+      <button class="btn-secondary" id="nextPageBtn" onclick="nextPage()" disabled>Next →</button>
+    </div>
+  </div>
+</main>
+
+<!-- Edit Booking Modal -->
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Booking</h3>
+      <button class="modal-close" onclick="closeEditModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Reference Code</label>
+        <input type="text" id="editRef" readonly>
+      </div>
+      <div class="form-group">
+        <label>Customer Name</label>
+        <input type="text" id="editName" placeholder="Enter customer name">
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="text" id="editPhone" placeholder="Enter phone number">
+      </div>
+        <div class="form-group">
+        <label>Status</label>
+        <select id="editStatus">
+          <option value="pending">Pending</option>
+          <option value="paid">Paid</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Amount (₱)</label>
+        <input type="number" id="editAmount" placeholder="Enter amount">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="editEmail" placeholder="Enter customer email">
+      </div>
+      <div class="form-group">
+        <label>Payment Method</label>
+        <input type="text" id="editPaymentMethod" placeholder="e.g. GCash, Cash">
+      </div>
+      <div class="form-group">
+        <label>Transaction ID</label>
+        <input type="text" id="editTransactionId" placeholder="Transaction reference">
+      </div>
+      <div class="form-group">
+        <label>Booking Notes</label>
+        <textarea id="editNotes" rows="4" placeholder="Special notes or comments"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveBookingChanges()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Receipt Viewer Modal -->
+<div class="modal" id="receiptViewModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Receipt Details</h3>
+      <button class="modal-close" onclick="closeReceiptViewer()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="receipt-view-grid">
+        <div class="receipt-image-card">
+          <div class="receipt-image-label">Receipt Image</div>
+          <img id="receiptViewImage" alt="Receipt image" class="receipt-image" style="display:none;" />
+          <div id="receiptViewPlaceholder" class="receipt-image-placeholder">No receipt image available for this booking.</div>
+        </div>
+        <div class="receipt-detail-card">
+          <div class="receipt-detail-row"><span>Customer</span><strong id="receiptViewName">-</strong></div>
+          <div class="receipt-detail-row"><span>Reference</span><strong id="receiptViewReference">-</strong></div>
+          <div class="receipt-detail-row"><span>Receipt Reference</span><strong id="receiptViewReceipt">-</strong></div>
+          <div class="receipt-detail-row"><span>Booking Date</span><strong id="receiptViewDate">-</strong></div>
+          <div class="receipt-detail-row"><span>Booking Time</span><strong id="receiptViewTime">-</strong></div>
+          <div class="receipt-detail-row"><span>Amount</span><strong id="receiptViewAmount">-</strong></div>
+          <div class="receipt-detail-row"><span>Payment Method</span><strong id="receiptViewPayment">-</strong></div>
+          <div class="receipt-detail-row"><span>Transaction ID</span><strong id="receiptViewTransaction">-</strong></div>
+          <div class="receipt-detail-row"><span>Status</span><strong id="receiptViewStatus">-</strong></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeReceiptViewer()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Today Summary Modal -->
+<div class="modal" id="todayModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Today's Booking Summary</h3>
+      <button class="modal-close" onclick="closeTodayModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">Date</div>
+          <div class="summary-value" id="todaySummaryDate">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total Bookings</div>
+          <div class="summary-value" id="todaySummaryTotal">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Pending</div>
+          <div class="summary-value" id="todaySummaryPending">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Paid/Completed</div>
+          <div class="summary-value" id="todaySummaryPaid">0</div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <h4>Bookings for Today</h4>
+        <div class="modal-list" id="todayBookingList"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeTodayModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-dashboard.js"></script>
+
+</body>
+</html>
