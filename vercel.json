@@ -1,0 +1,14 @@
+{
+  "version": 3,
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "admin-dashboard.html", "use": "@vercel/static" },
+    { "src": "css/**", "use": "@vercel/static" },
+    { "src": "js/**", "use": "@vercel/static" },
+    { "src": "logo.jpeg", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "^/$", "dest": "/index.html" },
+    { "src": "^/dashboard$", "dest": "/admin-dashboard.html" }
+  ]
+}

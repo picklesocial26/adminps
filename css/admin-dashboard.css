@@ -433,6 +433,24 @@ main {
   background: rgba(239, 68, 68, 0.15) !important;
 }
 
+.action-btn.confirm-btn {
+  color: var(--success);
+}
+
+.action-btn.confirm-btn:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.confirm-btn {
+  color: var(--success) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+.confirm-btn:hover {
+  background: rgba(16, 185, 129, 0.15) !important;
+}
+
 /* Pagination */
 .pagination {
   display: flex;

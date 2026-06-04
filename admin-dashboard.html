@@ -185,6 +185,51 @@
   </div>
 </div>
 
+<!-- Booking Details Modal -->
+<div class="modal" id="bookingDetailsModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Booking Details</h3>
+      <button class="modal-close" onclick="closeBookingDetails()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">Reference</div>
+          <div class="summary-value" id="detailsReference">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Customer</div>
+          <div class="summary-value" id="detailsCustomer">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Phone</div>
+          <div class="summary-value" id="detailsPhone">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Receipt Ref</div>
+          <div class="summary-value" id="detailsReceiptRef">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total</div>
+          <div class="summary-value" id="detailsTotal">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Status</div>
+          <div class="summary-value" id="detailsStatus">-</div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <h4>Booking items</h4>
+        <div id="bookingDetailsList" class="modal-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeBookingDetails()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Receipt Viewer Modal -->
 <div class="modal" id="receiptViewModal">
   <div class="modal-content">
