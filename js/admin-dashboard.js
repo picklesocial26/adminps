@@ -662,8 +662,7 @@ function openEditModal(booking) {
   document.getElementById('editEmail').value = booking.customer_email || booking.email || '';
   document.getElementById('editStatus').value = booking.status || 'pending';
   document.getElementById('editAmount').value = booking.price || booking.rate || '';
-  document.getElementById('editPaymentMethod').value = booking.payment_method || booking.paymentMethod || '';
-  document.getElementById('editTransactionId').value = booking.transaction_id || booking.transaction || '';
+  document.getElementById('editTransactionId').value = booking.receipt_reference || '';
   document.getElementById('editNotes').value = booking.notes || '';
   
   document.getElementById('editModal').classList.add('open');
@@ -723,8 +722,7 @@ async function saveBookingChanges() {
   const email = document.getElementById('editEmail').value.trim();
   const status = document.getElementById('editStatus').value;
   const amount = parseFloat(document.getElementById('editAmount').value) || 0;
-  const paymentMethod = document.getElementById('editPaymentMethod').value.trim();
-  const transactionId = document.getElementById('editTransactionId').value.trim();
+  const receiptReference = document.getElementById('editTransactionId').value.trim();
   const notes = document.getElementById('editNotes').value.trim();
 
   if (!name || !phone) {
@@ -738,29 +736,39 @@ async function saveBookingChanges() {
     console.log('Customer Name:', name);
     console.log('Phone:', phone);
 
-    const { data, error, status, statusText } = await supabaseClient
+    const updateData = {
+      customer_name: name,
+      phone_number: phone,
+      customer_email: email,
+      status: status,
+      price: amount,
+      receipt_reference: receiptReference,
+      notes: notes
+    };
+
+    console.log('Update data:', JSON.stringify(updateData, null, 2));
+
+    const { data, error, status: responseStatus, statusText } = await supabaseClient
       .from('bookings')
-      .update({
-        customer_name: name,
-        phone_number: phone,
-        customer_email: email,
-        status: status,
-        price: amount,
-        rate: amount,
-        payment_method: paymentMethod,
-        transaction_id: transactionId,
-        notes: notes
-      })
+      .update(updateData)
       .eq('id', currentEditingBooking.id);
 
-    console.log('Update response:', { data, error, status, statusText });
+    console.log('Update response:', { data, error, status: responseStatus, statusText });
 
     if (error) {
       console.error('❌ Update error:', error);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
       console.error('Error code:', error.code);
       console.error('Error message:', error.message);
       console.error('Error details:', error.details);
       console.error('Error hint:', error.hint);
+      
+      // Show detailed error to user
+      let errorMsg = error.message || 'Unknown error';
+      if (error.details) errorMsg += '\n\nDetails: ' + error.details;
+      if (error.hint) errorMsg += '\n\nHint: ' + error.hint;
+      
+      alert('Error updating booking:\n\n' + errorMsg + '\n\nCheck browser console (F12) for more details.');
       
       // Check if it's an RLS policy error
       if (error.code === 'PGRST301' || error.message.includes('policy')) {
@@ -778,7 +786,7 @@ async function saveBookingChanges() {
         return;
       }
       
-      throw error;
+      return;
     }
 
     console.log('✅ Booking updated successfully');
