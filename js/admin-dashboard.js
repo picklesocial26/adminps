@@ -733,7 +733,12 @@ async function saveBookingChanges() {
   }
 
   try {
-    const { error } = await supabaseClient
+    console.log('=== UPDATING BOOKING ===');
+    console.log('Booking ID:', currentEditingBooking.id);
+    console.log('Customer Name:', name);
+    console.log('Phone:', phone);
+
+    const { data, error, status, statusText } = await supabaseClient
       .from('bookings')
       .update({
         customer_name: name,
@@ -748,13 +753,41 @@ async function saveBookingChanges() {
       })
       .eq('id', currentEditingBooking.id);
 
-    if (error) throw error;
+    console.log('Update response:', { data, error, status, statusText });
 
+    if (error) {
+      console.error('❌ Update error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error details:', error.details);
+      console.error('Error hint:', error.hint);
+      
+      // Check if it's an RLS policy error
+      if (error.code === 'PGRST301' || error.message.includes('policy')) {
+        alert(
+          'RLS Policy Error: Your Supabase database has Row Level Security policies that prevent updates.\n\n' +
+          'To fix this:\n' +
+          '1. Go to Supabase Dashboard\n' +
+          '2. Select your database\n' +
+          '3. Go to "Bookings" table\n' +
+          '4. Click "Auth" menu\n' +
+          '5. Check if RLS is enabled\n' +
+          '6. Add an update policy or disable RLS for testing\n\n' +
+          'Error: ' + error.message
+        );
+        return;
+      }
+      
+      throw error;
+    }
+
+    console.log('✅ Booking updated successfully');
     showToast('✅ Booking updated successfully');
     closeEditModal();
     await loadBookings();
   } catch (err) {
-    console.error('Error saving booking:', err);
+    console.error('❌ Exception during update:', err);
+    console.error('Error stack:', err.stack);
     showToast('❌ Failed to save booking');
   }
 }
