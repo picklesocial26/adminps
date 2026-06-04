@@ -52,6 +52,7 @@ nav {
   top: 0;
   z-index: 200;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  flex-wrap: wrap;
 }
 
 .nav-brand {
@@ -305,8 +306,28 @@ main {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 72, 153, 0.3) transparent;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(236, 72, 153, 0.3);
+  border-radius: 4px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(236, 72, 153, 0.5);
 }
 
 .bookings-table {
@@ -733,13 +754,18 @@ main {
 
 /* Responsive */
 @media (max-width: 1024px) {
+  main {
+    padding: 24px 16px 60px;
+  }
+
   .bookings-table {
     font-size: 0.85rem;
+    min-width: 800px;
   }
 
   .bookings-table th,
   .bookings-table td {
-    padding: 10px 12px;
+    padding: 10px 8px;
   }
 
   .earnings-grid {
@@ -759,9 +785,22 @@ main {
     width: 100%;
     justify-content: center;
   }
+
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.8rem;
+  }
 }
 
 @media (max-width: 640px) {
+  main {
+    padding: 16px 12px 60px;
+  }
+
   .dashboard-header {
     flex-direction: column;
     align-items: flex-start;
@@ -782,28 +821,39 @@ main {
 
   .filter-input {
     width: 100%;
+    font-size: 16px;
   }
 
   .btn-primary {
     width: 100%;
+    justify-content: center;
   }
 
   .bookings-table {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    min-width: 700px;
   }
 
   .bookings-table th,
   .bookings-table td {
-    padding: 8px 10px;
+    padding: 8px 6px;
+    word-break: break-word;
+  }
+
+  .bookings-table th {
+    font-size: 0.7rem;
   }
 
   .action-buttons {
     flex-direction: column;
+    gap: 4px;
   }
 
   .action-btn {
     width: 100%;
     text-align: center;
+    padding: 4px 6px;
+    font-size: 0.65rem;
   }
 
   .modal-content {
@@ -822,5 +872,148 @@ main {
   .btn-secondary {
     padding: 8px 12px;
     font-size: 0.8rem;
+  }
+
+  .status-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+  }
+
+  .table-wrapper {
+    border-radius: 10px;
+  }
+
+  .bookings-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bulk-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  nav {
+    padding: 0 12px;
+  }
+
+  .nav-brand {
+    font-size: 0.95rem;
+  }
+
+  .nav-logo {
+    height: 24px;
+  }
+
+  main {
+    padding: 12px 8px 60px;
+  }
+
+  .container {
+    gap: 20px;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.3rem;
+  }
+
+  .dashboard-title p {
+    font-size: 0.85rem;
+  }
+
+  .header-controls {
+    gap: 8px;
+  }
+
+  .filter-input {
+    font-size: 16px;
+    padding: 8px 10px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+
+  .bookings-table {
+    min-width: 600px;
+    font-size: 0.7rem;
+  }
+
+  .bookings-table th,
+  .bookings-table td {
+    padding: 6px 4px;
+  }
+
+  .bookings-table th {
+    font-size: 0.65rem;
+  }
+
+  .status-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+
+  .action-btn {
+    font-size: 0.6rem;
+    padding: 3px 4px;
+  }
+
+  .earnings-card {
+    padding: 16px;
+  }
+
+  .earnings-amount {
+    font-size: 1.5rem;
+  }
+
+  .earnings-label {
+    font-size: 0.75rem;
+  }
+
+  .bookings-section h2,
+  .earnings-section h2 {
+    font-size: 1.1rem;
+  }
+
+  .toolbar-copy {
+    font-size: 0.8rem;
+  }
+
+  #pageInfo {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .bookings-table {
+    min-width: 500px;
+  }
+
+  .bookings-table th,
+  .bookings-table td {
+    padding: 5px 3px;
+  }
+
+  .nav-brand {
+    font-size: 0.85rem;
+    gap: 6px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 5px 8px;
+    font-size: 0.7rem;
+  }
+
+  main {
+    padding: 8px 4px 60px;
+  }
+
+  .container {
+    gap: 16px;
   }
 }
