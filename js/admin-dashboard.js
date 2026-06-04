@@ -7,6 +7,7 @@ let currentPage = 1;
 const itemsPerPage = 20;
 let currentEditingBooking = null;
 let selectedBookingIds = new Set();
+let currentBookingDetailsGroup = null;
 
 function getBookingGroupKey(booking) {
   if (booking.reference_code) return booking.reference_code;
@@ -264,8 +265,8 @@ function renderTable() {
       if (group.receipt_reference && group.receipt_reference !== 'N/A') {
         const confirmBtn = document.createElement('button');
         confirmBtn.className = 'action-btn confirm-btn';
-        confirmBtn.textContent = 'Confirm';
-        confirmBtn.title = 'Confirm payment and mark as paid';
+        confirmBtn.textContent = 'Confirm & Copy';
+        confirmBtn.title = 'Confirm payment, mark as paid, and copy Messenger text';
         confirmBtn.onclick = () => confirmPaymentGroup(group);
         actionCell.appendChild(confirmBtn);
       }
@@ -567,11 +568,67 @@ function openBookingDetails(group) {
     list.appendChild(item);
   });
 
+  currentBookingDetailsGroup = group;
   document.getElementById('bookingDetailsModal').classList.add('open');
 }
 
 function closeBookingDetails() {
   document.getElementById('bookingDetailsModal').classList.remove('open');
+  currentBookingDetailsGroup = null;
+}
+
+function copyBookingDetailsConfirmation() {
+  const group = currentBookingDetailsGroup;
+  if (!group) {
+    showToast('⚠️ No booking details available to copy');
+    return;
+  }
+
+  const customerName = group.customer_name || 'N/A';
+  const bookingReference = group.reference_code || 'N/A';
+  const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
+  const dates = Array.from(group.dates || new Set());
+  const formattedDates = dates.length
+    ? dates.map(d => {
+        const parsed = new Date(d);
+        if (isNaN(parsed)) return d;
+        return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      }).join(', ')
+    : 'N/A';
+
+  const courtGroups = (group.bookings || []).reduce((acc, booking) => {
+    const courtName = booking.court || booking.court_name || 'N/A';
+    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+    if (!acc[courtName]) acc[courtName] = [];
+    if (!acc[courtName].includes(timeSlot)) acc[courtName].push(timeSlot);
+    return acc;
+  }, {});
+
+  const timeIcons = ['🕚', '🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+  const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
+    const timeLines = times.map((timeSlot, index) => `${timeIcons[index] || '🕚'} ${timeSlot}`).join('\n');
+    return `🏟️ ${courtName}\n${timeLines}`;
+  }).join('\n\n');
+
+  const message =
+    `BOOKING CONFIRMATION\n\n` +
+    `Hello ${customerName},\n\n` +
+    `Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n` +
+    `📌 Booking Reference: ${bookingReference}\n` +
+    `💳 Total Paid: ${totalPaid}\n` +
+    `📅 Date: ${formattedDates}\n\n` +
+    `${bookingLines ? bookingLines + '\n\n' : ''}` +
+    `Thank you for booking with us! Your reservation has been successfully confirmed.`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(message).then(() => {
+      showToast('✅ Booking confirmation copied');
+    }).catch(() => {
+      prompt('Copy the text below for Messenger:', message);
+    });
+  } else {
+    prompt('Copy the text below for Messenger:', message);
+  }
 }
 
 function previousPage() {
@@ -867,8 +924,55 @@ async function confirmPaymentGroup(group) {
     return;
   }
 
-  showToast('✅ Booking group marked as paid');
+  copyBookingConfirmationText(group);
+  showToast('✅ Booking group marked as paid and text copied');
   await loadBookings();
+}
+
+function copyBookingConfirmationText(group) {
+  const customerName = group.customer_name || 'N/A';
+  const bookingReference = group.reference_code || 'N/A';
+  const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
+  const dates = Array.from(group.dates || new Set());
+  const formattedDates = dates.length
+    ? dates.map(d => {
+        const parsed = new Date(d);
+        if (isNaN(parsed)) return d;
+        return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      }).join(', ')
+    : 'N/A';
+
+  const courtGroups = (group.bookings || []).reduce((acc, booking) => {
+    const courtName = booking.court || booking.court_name || 'N/A';
+    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+    if (!acc[courtName]) acc[courtName] = [];
+    if (!acc[courtName].includes(timeSlot)) acc[courtName].push(timeSlot);
+    return acc;
+  }, {});
+
+  const timeIcons = ['🕚', '🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+  const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
+    const timeLines = times.map((timeSlot, index) => `${timeIcons[index] || '🕚'} ${timeSlot}`).join('\n');
+    return `🏟️ ${courtName}\n${timeLines}`;
+  }).join('\n\n');
+
+  const message =
+    `BOOKING CONFIRMATION\n\n` +
+    `Hello ${customerName},\n\n` +
+    `Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n` +
+    `📌 Booking Reference: ${bookingReference}\n` +
+    `💳 Total Paid: ${totalPaid}\n` +
+    `📅 Date: ${formattedDates}\n\n` +
+    `${bookingLines ? bookingLines + '\n\n' : ''}` +
+    `Thank you for booking with us! Your reservation has been successfully confirmed.`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(message).catch(() => {
+      prompt('Copy the text below for Messenger:', message);
+    });
+  } else {
+    prompt('Copy the text below for Messenger:', message);
+  }
 }
 
 // Confirm payment - mark pending booking as paid after admin verification
@@ -912,8 +1016,18 @@ async function confirmPayment(booking) {
     if (error) throw error;
 
     console.log('✅ Booking confirmed and marked as paid:', booking.id);
-    showToast('✅ Payment confirmed! Booking marked as paid');
-    
+
+    // Copy the booking confirmation text automatically after confirmation
+    const bookingGroup = {
+      customer_name: booking.customer_name,
+      reference_code: booking.reference_code || booking.reference || 'N/A',
+      totalAmount: booking.price || booking.rate || 0,
+      dates: new Set([booking.booking_date || booking.date || 'N/A']),
+      bookings: [booking]
+    };
+    copyBookingConfirmationText(bookingGroup);
+    showToast('✅ Payment confirmed and confirmation text copied');
+
     // Refresh data
     await loadBookings();
     

@@ -863,6 +863,35 @@ document.addEventListener("DOMContentLoaded", async () => {
       closeConfirmModal();
       openBookingSubmittedModal(refCode, totalAmount);
 
+      // Build messenger-ready confirmation text and copy to clipboard
+      try {
+        const bookingEntriesCopy = [...pendingBookingEntries];
+        const unique = (arr) => Array.from(new Set(arr.filter(Boolean)));
+        const courts = unique(bookingEntriesCopy.map(b => b.court_name || b.court)).join(', ') || '';
+        const dates = unique(bookingEntriesCopy.map(b => b.booking_date ? formatDateDisplay(b.booking_date) : b.booking_date)).join(', ') || '';
+        const times = unique(bookingEntriesCopy.map(b => b.booking_time || b.time_slot)).join(', ') || '';
+
+        const messengerMessage = `📌 Booking Confirmation\n\n**Booking Confirmed! ✅**\n\n**Name:** ${name}\n**Court(s):** ${courts}\n**Date:** ${dates}\n**Time:** ${times}\n**Booking Reference:** ${refCode}\n\nThank you for booking with us! Your reservation has been successfully confirmed.\n\nPlease arrive at least **10–15 minutes before your scheduled time** to ensure a smooth check-in process. Kindly present your booking reference upon arrival.\n\nIf you need to modify, reschedule, or cancel your booking, please contact us as early as possible.\n\nWe look forward to seeing you on the court and hope you have an amazing playing experience!\n\n**Thank you for choosing Pickle Social - Cebu! 🏓**`;
+
+        // Copy to clipboard (best-effort)
+        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(messengerMessage).then(() => {
+            showToast('✅ Confirmation copied to clipboard — paste into Messenger');
+          }).catch(() => {
+            showToast('⚠️ Unable to copy automatically. The message is ready to paste.');
+          });
+        }
+
+        // Also set messenger button href so user can open chat (message may not prefill in Messenger web)
+        const messengerBtn = document.querySelector('.btn-messenger');
+        if (messengerBtn) {
+          messengerBtn.href = `https://www.messenger.com/t/1070406479496408?ref=${encodeURIComponent(messengerMessage)}`;
+          messengerBtn.style.display = '';
+        }
+      } catch (e) {
+        console.error('Failed to prepare messenger copy:', e);
+      }
+
       showToast('✅ Booking submitted! Save a copy and proceed to scan payment.');
 
     } catch (err) {
@@ -1428,8 +1457,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadAndRenderTable();
 
     closeReceiptModal();
-    document.getElementById('successTitle').textContent = 'Booking Confirmed';
-    document.getElementById('successMessage').textContent = `Receipt verified for ${receiptBookingReference}. Your booking is now submitted and marked paid.`;
+    const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+    document.getElementById('successTitle').textContent = '📌 Booking Confirmation';
+    document.getElementById('successMessage').innerHTML = `
+      <strong>Booking Confirmed! ✅</strong><br><br>
+      <strong>Name:</strong> ${esc(successName)}<br>
+      <strong>Court(s):</strong> ${esc(successCourt)}<br>
+      <strong>Date:</strong> ${esc(successDate)}<br>
+      <strong>Time:</strong> ${esc(successTime)}<br>
+      <strong>Booking Reference:</strong> ${esc(receiptBookingReference)}<br><br>
+      <p>Thank you for booking with us! Your reservation has been successfully confirmed.</p>
+      <p>Please arrive at least <strong>10–15 minutes before your scheduled time</strong> to ensure a smooth check-in process. Kindly present your booking reference upon arrival.</p>
+      <p>If you need to modify, reschedule, or cancel your booking, please contact us as early as possible.</p>
+      <p>We look forward to seeing you on the court and hope you have an amazing playing experience!</p>
+      <p><em>Thank you for choosing Pickle Social - Cebu!</em></p>
+    `;
     document.getElementById('successName').textContent = successName;
     const successCourtEl = document.getElementById('successCourt');
     const successDateEl = document.getElementById('successDate');
