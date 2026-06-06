@@ -289,15 +289,16 @@ async function handleEvents(req, res) {
                 if (messaging_event.message) {
                   const senderId = messaging_event.sender.id;
                   const messageText = messaging_event.message.text;
+                  const hasQuickReply = messaging_event.message.quick_reply && messaging_event.message.quick_reply.payload;
 
-                  // Handle quick reply payloads (e.g., How to book)
-                  if (messaging_event.message.quick_reply && messaging_event.message.quick_reply.payload) {
+                  // Handle quick reply payloads (e.g., How to book) — if quick_reply is present, skip text processing
+                  if (hasQuickReply) {
                     const qrPayload = messaging_event.message.quick_reply.payload;
                     if (qrPayload === 'HOW_TO_BOOK') {
                       console.log(`🔔 Quick reply HOW_TO_BOOK from ${senderId}`);
                       await sendMessageFn(senderId, howToBookText(), null);
-                      continue;
                     }
+                    continue; // Skip messageText processing for any quick_reply
                   }
 
                   if (messageText) {
