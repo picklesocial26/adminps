@@ -351,15 +351,15 @@ function sendMessage(...args) {
   return sendMessageFn(...args);
 }
 
-module.exports = {
-  handler,
-  handleVerification,
-  handleEvents,
-  handleMessage,
-  sendMessage,
-  formatBookingMessage,
-  getBookingStatus,
-  // testing helpers
-  setSupabaseClient,
-  setSendMessage
-};
+// For serverless platforms the default export *must* be the request handler function.
+// Export the handler as the module default, and attach named exports for tests.
+module.exports = handler;
+module.exports.handleVerification = handleVerification;
+module.exports.handleEvents = handleEvents;
+module.exports.handleMessage = handleMessage;
+module.exports.sendMessage = sendMessage;
+module.exports.formatBookingMessage = formatBookingMessage;
+module.exports.getBookingStatus = getBookingStatus;
+// testing helpers
+module.exports.setSupabaseClient = setSupabaseClient;
+module.exports.setSendMessage = setSendMessage;
