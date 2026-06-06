@@ -19,19 +19,26 @@ const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
  * GET request handler for webhook verification
  */
 function handleVerification(req, res) {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+  try {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
 
-  if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('Webhook verified');
-      res.status(200).send(challenge);
+    if (mode && token) {
+      if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+        console.log('✅ Webhook verified');
+        res.status(200).send(challenge);
+      } else {
+        console.warn('❌ Invalid verification token or mode');
+        res.sendStatus(403);
+      }
     } else {
-      res.sendStatus(403);
+      console.warn('❌ Missing verification parameters');
+      res.sendStatus(400);
     }
-  } else {
-    res.sendStatus(400);
+  } catch (err) {
+    console.error('Error in verification:', err);
+    res.sendStatus(500);
   }
 }
 
@@ -40,6 +47,10 @@ function handleVerification(req, res) {
  */
 async function getBookingStatus(reference) {
   try {
+    if (!reference || reference.length < 2) {
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('bookings')
       .select('*')
@@ -47,11 +58,11 @@ async function getBookingStatus(reference) {
       .single();
 
     if (error) {
-      console.error('Database error:', error);
+      console.warn(`Booking not found for reference: ${reference}`, error.message);
       return null;
     }
 
-    return data;
+    return data || null;
   } catch (err) {
     console.error('Error fetching booking:', err);
     return null;
@@ -121,6 +132,11 @@ function formatBookingMessage(booking) {
  */
 async function sendMessage(recipientId, message, quickReplies) {
   try {
+    if (!recipientId || !message || !PAGE_ACCESS_TOKEN) {
+      console.warn('Missing required parameters for sending message');
+      return false;
+    }
+
     const payload = {
       recipient: { id: recipientId },
       message: {
@@ -143,10 +159,12 @@ async function sendMessage(recipientId, message, quickReplies) {
     });
 
     if (!response.ok) {
-      console.error('Failed to send message:', response.statusText);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Failed to send message:', response.statusText, errorData);
       return false;
     }
 
+    console.log(`✅ Message sent to ${recipientId}`);
     return true;
   } catch (err) {
     console.error('Error sending message:', err);
@@ -155,110 +173,112 @@ async function sendMessage(recipientId, message, quickReplies) {
 }
 
 /**
- * Store or update messenger ID for a booking
- */
-async function updateMessengerId(reference, messengerId) {
-  try {
-    if (!reference || !messengerId) return;
-
-    const { error } = await supabase
-      .from('bookings')
-      .update({ messenger_id: messengerId })
-      .eq('reference_code', reference);
-
-    if (error) {
-      console.warn(`Could not store messenger ID for ${reference}:`, error.message);
-    } else {
-      console.log(`✅ Messenger ID stored for ${reference}`);
-    }
-  } catch (err) {
-    console.error('Error storing messenger ID:', err);
-  }
-}
-
-/**
  * Handle incoming messages
  */
 async function handleMessage(senderId, text) {
-  const cleanText = text.trim().toUpperCase();
+  try {
+    const cleanText = text.trim().toUpperCase();
 
-  // Check if message is a booking reference
-  // Support formats like: REF-ABC123, PKL-ABCD123EFGH, ABC123, etc.
-  const referenceMatch = cleanText.match(/([A-Z]{0,4}[-]?[A-Z0-9]{6,20})/);
-  const reference = referenceMatch ? referenceMatch[0].replace(/\s/g, '') : cleanText;
+    // Check if message is a booking reference - simpler pattern
+    const referenceMatch = cleanText.match(/[A-Z0-9\-]{6,}/);
+    const reference = referenceMatch ? referenceMatch[0] : cleanText;
 
-  // Greeting messages
-  if (cleanText.includes('HI') || cleanText.includes('HELLO') || cleanText.includes('START')) {
-    await sendMessage(
-      senderId,
-      'Hey! Welcome to Pickle Social! 🎾\n\nSend us your booking reference to check your booking status.\n\nExample: PKL-ABCD123EFGH'
-    );
-    return;
+    // Greeting messages
+    if (cleanText.includes('HI') || cleanText.includes('HELLO') || cleanText.includes('START')) {
+      await sendMessage(
+        senderId,
+        'Hey! Welcome to Pickle Social! 🎾\n\nSend us your booking reference to check your booking status.\n\nExample: PKL-ABCD123EFGH'
+      );
+      return;
+    }
+
+    // Help message
+    if (cleanText.includes('HELP')) {
+      await sendMessage(
+        senderId,
+        'Sure! Here\'s how to use me:\n\n1. Send your booking reference (e.g., PKL-ABCD123EFGH)\n2. I\'ll check your booking status\n3. You\'ll see if it\'s pending, confirmed, paid, or completed\n\nWhat\'s your booking reference?'
+      );
+      return;
+    }
+
+    // Query booking status
+    const booking = await getBookingStatus(reference);
+    
+    // Store messenger ID when customer contacts about a valid booking
+    if (booking && booking.reference_code) {
+      try {
+        const { error } = await supabase
+          .from('bookings')
+          .update({ messenger_id: senderId })
+          .eq('reference_code', booking.reference_code);
+        
+        if (!error) {
+          console.log(`✅ Messenger ID stored for ${booking.reference_code}`);
+        } else {
+          console.warn(`Could not store messenger ID:`, error.message);
+        }
+      } catch (updateErr) {
+        console.warn(`Error storing messenger ID:`, updateErr);
+      }
+    }
+    
+    const { text: messageText, quick_replies } = formatBookingMessage(booking);
+    await sendMessage(senderId, messageText, quick_replies);
+  } catch (err) {
+    console.error('Error in handleMessage:', err);
   }
-
-  // Help message
-  if (cleanText.includes('HELP')) {
-    await sendMessage(
-      senderId,
-      'Sure! Here\'s how to use me:\n\n1. Send your booking reference (e.g., PKL-ABCD123EFGH)\n2. I\'ll check your booking status\n3. You\'ll see if it\'s pending, confirmed, paid, or completed\n\nWhat\'s your booking reference?'
-    );
-    return;
-  }
-
-  // Query booking status
-  const booking = await getBookingStatus(reference);
-  
-  // Store messenger ID when customer contacts about a valid booking
-  if (booking && booking.reference_code) {
-    await updateMessengerId(booking.reference_code, senderId);
-  }
-  
-  const { text: messageText, quick_replies } = formatBookingMessage(booking);
-
-  await sendMessage(senderId, messageText, quick_replies);
 }
 
 /**
  * Handle webhook POST events
  */
 async function handleEvents(req, res) {
-  const body = req.body;
+  try {
+    const body = req.body;
 
-  if (body && body.object === 'page') {
-    if (body.entry && Array.isArray(body.entry)) {
-      for (const entry of body.entry) {
-        if (entry.messaging && Array.isArray(entry.messaging)) {
-          for (const messaging_event of entry.messaging) {
-            if (messaging_event.message) {
-              const senderId = messaging_event.sender.id;
-              const messageText = messaging_event.message.text;
+    if (body && body.object === 'page') {
+      if (body.entry && Array.isArray(body.entry)) {
+        for (const entry of body.entry) {
+          if (entry.messaging && Array.isArray(entry.messaging)) {
+            for (const messaging_event of entry.messaging) {
+              try {
+                if (messaging_event.message) {
+                  const senderId = messaging_event.sender.id;
+                  const messageText = messaging_event.message.text;
 
-              if (messageText) {
-                console.log(`📨 Message from ${senderId}: ${messageText}`);
-                await handleMessage(senderId, messageText);
-              }
-            }
+                  if (messageText) {
+                    console.log(`📨 Message from ${senderId}: ${messageText}`);
+                    await handleMessage(senderId, messageText);
+                  }
+                }
 
-            // Handle postback (quick reply clicks)
-            if (messaging_event.postback) {
-              const senderId = messaging_event.sender.id;
-              const payload = messaging_event.postback.payload;
+                // Handle postback (quick reply clicks)
+                if (messaging_event.postback) {
+                  const senderId = messaging_event.sender.id;
+                  const payload = messaging_event.postback.payload;
 
-              if (payload && payload.startsWith('CHECK_')) {
-                const reference = payload.replace('CHECK_', '');
-                console.log(`🔄 Refresh status for: ${reference}`);
-                const booking = await getBookingStatus(reference);
-                const { text: messageText, quick_replies } = formatBookingMessage(booking);
-                await sendMessage(senderId, messageText, quick_replies);
+                  if (payload && payload.startsWith('CHECK_')) {
+                    const reference = payload.replace('CHECK_', '');
+                    console.log(`🔄 Refresh status for: ${reference}`);
+                    const booking = await getBookingStatus(reference);
+                    const { text: messageText, quick_replies } = formatBookingMessage(booking);
+                    await sendMessage(senderId, messageText, quick_replies);
+                  }
+                }
+              } catch (eventErr) {
+                console.error('Error processing event:', eventErr);
               }
             }
           }
         }
       }
+      res.status(200).send('ok');
+    } else {
+      res.sendStatus(404);
     }
-    res.status(200).send('ok');
-  } else {
-    res.sendStatus(404);
+  } catch (err) {
+    console.error('Error in handleEvents:', err);
+    res.status(500).json({ error: err.message });
   }
 }
 
@@ -277,17 +297,27 @@ async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      return handleVerification(req, res);
+      try {
+        return handleVerification(req, res);
+      } catch (verifyErr) {
+        console.error('Verification error:', verifyErr);
+        return res.status(500).json({ error: 'Verification failed' });
+      }
     }
 
     if (req.method === 'POST') {
-      return handleEvents(req, res);
+      try {
+        return await handleEvents(req, res);
+      } catch (eventsErr) {
+        console.error('Events handling error:', eventsErr);
+        return res.status(500).json({ error: 'Events handling failed' });
+      }
     }
 
-    res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('❌ Handler error:', err.message || err);
-    res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ error: err.message || 'Internal server error' });
   }
 }
 

@@ -23,26 +23,7 @@ async function sendConfirmationMessage(messengerId, booking) {
       return false;
     }
 
-    const bookingDetails = `
-📅 *Booking Confirmed!*
-
-*Reference:* ${booking.reference_code}
-*Customer:* ${booking.customer_name}
-*Phone:* ${booking.phone_number || 'N/A'}
-
-*Booking Details:*
-🎾 *Court:* ${booking.court || booking.court_name || 'N/A'}
-📆 *Date:* ${booking.booking_date || 'N/A'}
-⏰ *Time:* ${booking.time_slot || booking.booking_time || 'N/A'}
-💰 *Amount:* ₱${parseFloat(booking.price || booking.rate || 0).toFixed(2)}
-
-*Status:* ✅ CONFIRMED
-
-${booking.booking_notes ? `📝 *Notes:* ${booking.booking_notes}` : ''}
-
-Thank you for booking with Pickle Social! 🎾
-See you soon!
-    `.trim();
+    const bookingDetails = `📅 *Booking Confirmed!*\n\n*Reference:* ${booking.reference_code}\n*Customer:* ${booking.customer_name}\n*Phone:* ${booking.phone_number || 'N/A'}\n\n*Booking Details:*\n🎾 *Court:* ${booking.court || booking.court_name || 'N/A'}\n📆 *Date:* ${booking.booking_date || 'N/A'}\n⏰ *Time:* ${booking.time_slot || booking.booking_time || 'N/A'}\n💰 *Amount:* ₱${parseFloat(booking.price || booking.rate || 0).toFixed(2)}\n\n*Status:* ✅ CONFIRMED${booking.booking_notes ? `\n📝 *Notes:* ${booking.booking_notes}` : ''}\n\nThank you for booking with Pickle Social! 🎾\nSee you soon!`;
 
     const url = `${FACEBOOK_GRAPH_API}/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
 
