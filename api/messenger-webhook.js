@@ -5,11 +5,30 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+// Initialize Supabase client lazily and allow injection for tests
+let supabase = null;
+function getSupabase() {
+  if (supabase) return supabase;
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  } else {
+    // Fallback dummy client to avoid throwing during tests when env vars are not set
+    supabase = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: null, error: null })
+          })
+        })
+      })
+    };
+  }
+  return supabase;
+}
+
+function setSupabaseClient(client) {
+  supabase = client;
+}
 
 // Facebook Messenger constants
 const VERIFY_TOKEN = process.env.MESSENGER_VERIFY_TOKEN;
@@ -51,7 +70,7 @@ async function getBookingStatus(reference) {
       return null;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('bookings')
       .select('*')
       .eq('reference_code', reference)
@@ -130,7 +149,7 @@ function formatBookingMessage(booking) {
 /**
  * Send message via Facebook Messenger API
  */
-async function sendMessage(recipientId, message, quickReplies) {
+async function sendMessageImpl(recipientId, message, quickReplies) {
   try {
     if (!recipientId || !message || !PAGE_ACCESS_TOKEN) {
       console.warn('Missing required parameters for sending message');
@@ -173,6 +192,12 @@ async function sendMessage(recipientId, message, quickReplies) {
   }
 }
 
+// allow overriding the sendMessage implementation in tests
+let sendMessageFn = sendMessageImpl;
+function setSendMessage(fn) {
+  sendMessageFn = fn;
+}
+
 /**
  * Handle incoming messages
  */
@@ -186,7 +211,7 @@ async function handleMessage(senderId, text) {
 
     // Greeting messages
     if (cleanText.includes('HI') || cleanText.includes('HELLO') || cleanText.includes('START')) {
-      await sendMessage(
+      await sendMessageFn(
         senderId,
         'Hey! Welcome to Pickle Social! 🎾\n\nSend us your booking reference to check your booking status.\n\nExample: PKL-ABCD123EFGH'
       );
@@ -195,7 +220,7 @@ async function handleMessage(senderId, text) {
 
     // Help message
     if (cleanText.includes('HELP')) {
-      await sendMessage(
+      await sendMessageFn(
         senderId,
         'Sure! Here\'s how to use me:\n\n1. Send your booking reference (e.g., PKL-ABCD123EFGH)\n2. I\'ll check your booking status\n3. You\'ll see if it\'s pending, confirmed, paid, or completed\n\nWhat\'s your booking reference?'
       );
@@ -208,7 +233,7 @@ async function handleMessage(senderId, text) {
     // Store messenger ID when customer contacts about a valid booking
     if (booking && booking.reference_code) {
       try {
-        const { error } = await supabase
+        const { error } = await getSupabase()
           .from('bookings')
           .update({ messenger_id: senderId })
           .eq('reference_code', booking.reference_code);
@@ -224,7 +249,7 @@ async function handleMessage(senderId, text) {
     }
     
     const { text: messageText, quick_replies } = formatBookingMessage(booking);
-    await sendMessage(senderId, messageText, quick_replies);
+    await sendMessageFn(senderId, messageText, quick_replies);
   } catch (err) {
     console.error('Error in handleMessage:', err);
   }
@@ -263,7 +288,7 @@ async function handleEvents(req, res) {
                     console.log(`🔄 Refresh status for: ${reference}`);
                     const booking = await getBookingStatus(reference);
                     const { text: messageText, quick_replies } = formatBookingMessage(booking);
-                    await sendMessage(senderId, messageText, quick_replies);
+                    await sendMessageFn(senderId, messageText, quick_replies);
                   }
                 }
               } catch (eventErr) {
@@ -322,4 +347,19 @@ async function handler(req, res) {
   }
 }
 
-module.exports = handler;
+function sendMessage(...args) {
+  return sendMessageFn(...args);
+}
+
+module.exports = {
+  handler,
+  handleVerification,
+  handleEvents,
+  handleMessage,
+  sendMessage,
+  formatBookingMessage,
+  getBookingStatus,
+  // testing helpers
+  setSupabaseClient,
+  setSendMessage
+};
