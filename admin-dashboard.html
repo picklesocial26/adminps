@@ -99,7 +99,6 @@
             <tr>
               <th><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"></th>
               <th>Reference</th>
-              <th>Receipt Ref</th>
               <th>Name</th>
               <th>Phone</th>
               <th>Court</th>
@@ -165,10 +164,7 @@
         <label>Email</label>
         <input type="email" id="editEmail" placeholder="Enter customer email">
       </div>
-      <div class="form-group">
-        <label>Receipt_Reference</label>
-        <input type="text" id="editTransactionId" placeholder="Transaction reference">
-      </div>
+
       <div class="form-group">
         <label>Booking Notes</label>
         <textarea id="editNotes" rows="4" placeholder="Special notes or comments"></textarea>
@@ -201,10 +197,6 @@
         <div class="summary-card">
           <div class="summary-label">Phone</div>
           <div class="summary-value" id="detailsPhone">-</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">Receipt Ref</div>
-          <div class="summary-value" id="detailsReceiptRef">-</div>
         </div>
         <div class="summary-card">
           <div class="summary-label">Total</div>
@@ -244,7 +236,6 @@
         <div class="receipt-detail-card">
           <div class="receipt-detail-row"><span>Customer</span><strong id="receiptViewName">-</strong></div>
           <div class="receipt-detail-row"><span>Reference</span><strong id="receiptViewReference">-</strong></div>
-          <div class="receipt-detail-row"><span>Receipt Reference</span><strong id="receiptViewReceipt">-</strong></div>
           <div class="receipt-detail-row"><span>Booking Date</span><strong id="receiptViewDate">-</strong></div>
           <div class="receipt-detail-row"><span>Booking Time</span><strong id="receiptViewTime">-</strong></div>
           <div class="receipt-detail-row"><span>Amount</span><strong id="receiptViewAmount">-</strong></div>

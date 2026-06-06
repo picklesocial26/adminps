@@ -25,7 +25,6 @@ function groupBookings(bookings) {
         ids: [],
         bookings: [],
         reference_code: booking.reference_code || 'N/A',
-        receipt_reference: booking.receipt_reference || booking.receipt_reference || 'N/A',
         customer_name: booking.customer_name || 'N/A',
         phone_number: booking.phone_number || booking.phone || 'N/A',
         totalAmount: 0,
@@ -44,7 +43,6 @@ function groupBookings(bookings) {
     group.dates.add(booking.booking_date || 'N/A');
     group.times.add(booking.time_slot || booking.booking_time || 'N/A');
 
-    if (booking.receipt_reference) group.receipt_reference = booking.receipt_reference;
     if (group.status !== 'pending') {
       if (booking.status === 'pending') {
         group.status = 'pending';
@@ -156,7 +154,7 @@ function applyFilters() {
 
   filteredBookings = allBookings.filter(booking => {
     let matches = true;
-    const searchValue = [booking.reference_code, booking.receipt_reference, booking.customer_name, booking.phone_number, booking.customer_email, booking.booking_date, booking.court, booking.court_name]
+    const searchValue = [booking.reference_code, booking.customer_name, booking.phone_number, booking.customer_email, booking.booking_date, booking.court, booking.court_name]
       .filter(Boolean)
       .join(' ').toLowerCase();
 
@@ -217,7 +215,6 @@ function renderTable() {
     selectCell.appendChild(checkbox);
 
     const refCell = createCell(group.reference_code || 'N/A');
-    const receiptRefCell = createCell(group.receipt_reference || 'N/A');
     const nameCell = createCell(group.customer_name || 'N/A');
     const phoneCell = createCell(formatPhone(group.phone_number || 'N/A'));
     const courtCell = createCell(group.courtSummary || 'Multiple');
@@ -255,26 +252,23 @@ function renderTable() {
     actionCell.appendChild(copyBtn);
     actionCell.appendChild(detailsBtn);
     if (group.status === 'pending') {
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'action-btn confirm-btn';
+      confirmBtn.textContent = 'Confirm';
+      confirmBtn.title = 'Confirm booking and send Messenger notification';
+      confirmBtn.onclick = () => confirmBookingViaMessenger(group);
+      actionCell.appendChild(confirmBtn);
+
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'action-btn delete-btn';
       deleteBtn.textContent = 'Delete';
       deleteBtn.title = 'Delete this pending booking group';
       deleteBtn.onclick = () => deleteBookingGroup(group);
       actionCell.appendChild(deleteBtn);
-
-      if (group.receipt_reference && group.receipt_reference !== 'N/A') {
-        const confirmBtn = document.createElement('button');
-        confirmBtn.className = 'action-btn confirm-btn';
-        confirmBtn.textContent = 'Confirm & Copy';
-        confirmBtn.title = 'Confirm payment, mark as paid, and copy Messenger text';
-        confirmBtn.onclick = () => confirmPaymentGroup(group);
-        actionCell.appendChild(confirmBtn);
-      }
     }
 
     row.appendChild(selectCell);
     row.appendChild(refCell);
-    row.appendChild(receiptRefCell);
     row.appendChild(nameCell);
     row.appendChild(phoneCell);
     row.appendChild(courtCell);
@@ -428,13 +422,12 @@ function downloadCsv() {
   }
 
   const rows = [
-    ['Reference', 'Receipt Reference', 'Name', 'Phone', 'Email', 'Court', 'Date', 'Time', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Notes']
+    ['Reference', 'Name', 'Phone', 'Email', 'Court', 'Date', 'Time', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Notes']
   ];
 
   filteredBookings.forEach(b => {
     rows.push([
       b.reference_code || '',
-      b.receipt_reference || '',
       b.customer_name || '',
       b.phone_number || '',
       b.customer_email || b.email || '',
@@ -544,7 +537,6 @@ function openBookingDetails(group) {
   document.getElementById('detailsReference').textContent = group.reference_code || 'N/A';
   document.getElementById('detailsCustomer').textContent = group.customer_name || 'N/A';
   document.getElementById('detailsPhone').textContent = formatPhone(group.phone_number || 'N/A');
-  document.getElementById('detailsReceiptRef').textContent = group.receipt_reference || 'N/A';
   document.getElementById('detailsTotal').textContent = '₱' + group.totalAmount.toLocaleString();
   document.getElementById('detailsStatus').textContent = group.status || 'pending';
 
@@ -662,7 +654,6 @@ function openEditModal(booking) {
   document.getElementById('editEmail').value = booking.customer_email || booking.email || '';
   document.getElementById('editStatus').value = booking.status || 'pending';
   document.getElementById('editAmount').value = booking.price || booking.rate || '';
-  document.getElementById('editTransactionId').value = booking.receipt_reference || '';
   document.getElementById('editNotes').value = booking.notes || '';
   
   document.getElementById('editModal').classList.add('open');
@@ -696,7 +687,6 @@ function openReceiptViewer(booking) {
 
   document.getElementById('receiptViewName').textContent = booking.customer_name || booking.name || 'Unknown';
   document.getElementById('receiptViewReference').textContent = booking.reference_code || booking.reference || 'N/A';
-  document.getElementById('receiptViewReceipt').textContent = booking.receipt_reference || 'N/A';
   document.getElementById('receiptViewDate').textContent = booking.booking_date || booking.date || 'N/A';
   document.getElementById('receiptViewTime').textContent = booking.time_slot || booking.booking_time || 'N/A';
   document.getElementById('receiptViewAmount').textContent = '₱' + ((booking.price || booking.rate || 0).toLocaleString());
@@ -722,7 +712,6 @@ async function saveBookingChanges() {
   const email = document.getElementById('editEmail').value.trim();
   const status = document.getElementById('editStatus').value;
   const amount = parseFloat(document.getElementById('editAmount').value) || 0;
-  const receiptReference = document.getElementById('editTransactionId').value.trim();
   const notes = document.getElementById('editNotes').value.trim();
 
   if (!name || !phone) {
@@ -742,7 +731,6 @@ async function saveBookingChanges() {
       customer_email: email,
       status: status,
       price: amount,
-      receipt_reference: receiptReference,
       notes: notes
     };
 
@@ -918,57 +906,8 @@ async function deleteBookingGroup(group) {
   await loadBookings();
 }
 
-async function confirmPaymentGroup(group) {
-  const pendingBookings = group.bookings.filter(b => b.status === 'pending' && b.receipt_reference);
-  if (pendingBookings.length === 0) {
-    showToast('⚠️ No pending bookings with receipt reference found');
-    return;
-  }
-
-  const scheduleStrings = pendingBookings
-    .map(b => {
-      const bookingDate = b.booking_date || b.date || '';
-      const timeSlot = b.time_slot || b.booking_time || '';
-      return bookingDate && timeSlot ? `${bookingDate} ${timeSlot}` : null;
-    })
-    .filter(Boolean);
-
-  const conflictBookings = allBookings.filter(b => {
-    if (group.ids.includes(b.id)) return false;
-    const bookingDate = b.booking_date || b.date || '';
-    const timeSlot = b.time_slot || b.booking_time || '';
-    return scheduleStrings.includes(`${bookingDate} ${timeSlot}`);
-  });
-
-  if (conflictBookings.length > 0) {
-    const conflictMessage = `Warning: ${conflictBookings.length} other booking(s) have the same date and time schedule as this group.\n\n` +
-      `Please double check before confirming payment.\n\n` +
-      `Continue anyway?`;
-    const keepGoing = confirm(conflictMessage);
-    if (!keepGoing) return;
-  }
-
-  const confirmed = confirm(
-    `Confirm payment for ${pendingBookings.length} pending booking(s) for ${group.customer_name}? This will mark them as paid.`
-  );
-  if (!confirmed) return;
-
-  const ids = pendingBookings.map(b => b.id);
-  const { error } = await supabaseClient
-    .from('bookings')
-    .update({ status: 'paid' })
-    .in('id', ids);
-
-  if (error) {
-    console.error('Bulk confirm group error:', error);
-    showToast('❌ Failed to confirm payment');
-    return;
-  }
-
-  copyBookingConfirmationText(group);
-  showToast('✅ Booking group marked as paid and text copied');
-  await loadBookings();
-}
+// Payment confirmation functions removed - now handled via Messenger automation
+// Use the /api/confirm-booking endpoint to confirm bookings and send Messenger notifications
 
 function copyBookingConfirmationText(group) {
   const customerName = group.customer_name || 'N/A';
@@ -1016,65 +955,57 @@ function copyBookingConfirmationText(group) {
   }
 }
 
-// Confirm payment - mark pending booking as paid after admin verification
-async function confirmPayment(booking) {
-  if (!booking.status || booking.status !== 'pending') {
-    showToast('⚠️ Only pending bookings can be confirmed');
+// Confirm payment - now handled via Messenger automation through /api/confirm-booking
+// This function has been removed as bookings are now confirmed via direct Messenger API
+
+// Confirm booking via Messenger automation
+async function confirmBookingViaMessenger(group) {
+  const referenceCode = group.reference_code;
+  if (!referenceCode) {
+    showToast('⚠️ No reference code found');
     return;
   }
 
-  if (!booking.receipt_reference) {
-    showToast('⚠️ Booking does not have a receipt reference');
-    return;
-  }
-
-  // Confirmation dialog
   const confirmed = confirm(
-    `Are you sure you want to confirm payment for this booking?\n\n` +
-    `Reference: ${booking.reference_code}\n` +
-    `Receipt Reference: ${booking.receipt_reference}\n` +
-    `Customer: ${booking.customer_name}\n` +
-    `Amount: ₱${(booking.price || booking.rate || 0).toLocaleString()}\n` +
-    `Date: ${booking.booking_date}\n\n` +
-    `This will mark the booking as PAID.`
+    `Confirm booking for ${group.customer_name}?\n\n` +
+    `Reference: ${referenceCode}\n\n` +
+    `Customer will receive automatic Messenger notification with confirmation details.`
   );
 
-  if (!confirmed) {
-    return;
-  }
-
-  if (!supabaseClient) {
-    showToast('❌ Database not connected');
-    return;
-  }
+  if (!confirmed) return;
 
   try {
-    const { error } = await supabaseClient
-      .from('bookings')
-      .update({ status: 'paid' })
-      .eq('id', booking.id);
-
-    if (error) throw error;
-
-    console.log('✅ Booking confirmed and marked as paid:', booking.id);
-
-    // Copy the booking confirmation text automatically after confirmation
-    const bookingGroup = {
-      customer_name: booking.customer_name,
-      reference_code: booking.reference_code || booking.reference || 'N/A',
-      totalAmount: booking.price || booking.rate || 0,
-      dates: new Set([booking.booking_date || booking.date || 'N/A']),
-      bookings: [booking]
-    };
-    copyBookingConfirmationText(bookingGroup);
-    showToast('✅ Payment confirmed and confirmation text copied');
-
-    // Refresh data
-    await loadBookings();
+    console.log('Confirming booking:', referenceCode);
     
-  } catch (err) {
-    console.error('❌ Error confirming payment:', err);
-    showToast('❌ Failed to confirm payment');
+    const response = await fetch('/api/confirm-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference_code: referenceCode })
+    });
+
+    console.log('Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      let errorMessage = 'Failed to confirm booking';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (e) {
+        errorMessage = `Server error (${response.status})`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log('Success response:', result);
+
+    showToast('✅ Booking confirmed! Messenger notification sent.');
+    await loadBookings();
+  } catch (error) {
+    console.error('Error confirming booking:', error);
+    showToast(`❌ ${error.message || 'Failed to confirm booking'}`);
   }
 }
 
