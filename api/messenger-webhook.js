@@ -146,6 +146,10 @@ function formatBookingMessage(booking) {
   };
 }
 
+function howToBookText() {
+  return "Hi! 👋 Our booking website is still under development at the moment. We'll announce once it's ready. Thank you for your patience!";
+}
+
 /**
  * Send message via Facebook Messenger API
  */
@@ -213,7 +217,14 @@ async function handleMessage(senderId, text) {
     if (cleanText.includes('HI') || cleanText.includes('HELLO') || cleanText.includes('START')) {
       await sendMessageFn(
         senderId,
-        'Hey! Welcome to Pickle Social! 🎾\n\nSend us your booking reference to check your booking status.\n\nExample: PKL-ABCD123EFGH'
+        'Hey! Welcome to Pickle Social! 🎾\n\nSend us your booking reference to check your booking status.\n\nExample: PKL-ABCD123EFGH',
+        [
+          {
+            content_type: 'text',
+            title: 'How to book',
+            payload: 'HOW_TO_BOOK'
+          }
+        ]
       );
       return;
     }
@@ -222,7 +233,14 @@ async function handleMessage(senderId, text) {
     if (cleanText.includes('HELP')) {
       await sendMessageFn(
         senderId,
-        'Sure! Here\'s how to use me:\n\n1. Send your booking reference (e.g., PKL-ABCD123EFGH)\n2. I\'ll check your booking status\n3. You\'ll see if it\'s pending, confirmed, paid, or completed\n\nWhat\'s your booking reference?'
+        'Sure! Here\'s how to use me:\n\n1. Send your booking reference (e.g., PKL-ABCD123EFGH)\n2. I\'ll check your booking status\n3. You\'ll see if it\'s pending, confirmed, paid, or completed\n\nWhat\'s your booking reference?',
+        [
+          {
+            content_type: 'text',
+            title: 'How to book',
+            payload: 'HOW_TO_BOOK'
+          }
+        ]
       );
       return;
     }
@@ -272,6 +290,16 @@ async function handleEvents(req, res) {
                   const senderId = messaging_event.sender.id;
                   const messageText = messaging_event.message.text;
 
+                  // Handle quick reply payloads (e.g., How to book)
+                  if (messaging_event.message.quick_reply && messaging_event.message.quick_reply.payload) {
+                    const qrPayload = messaging_event.message.quick_reply.payload;
+                    if (qrPayload === 'HOW_TO_BOOK') {
+                      console.log(`🔔 Quick reply HOW_TO_BOOK from ${senderId}`);
+                      await sendMessageFn(senderId, howToBookText(), null);
+                      continue;
+                    }
+                  }
+
                   if (messageText) {
                     console.log(`📨 Message from ${senderId}: ${messageText}`);
                     await handleMessage(senderId, messageText);
@@ -289,6 +317,9 @@ async function handleEvents(req, res) {
                     const booking = await getBookingStatus(reference);
                     const { text: messageText, quick_replies } = formatBookingMessage(booking);
                     await sendMessageFn(senderId, messageText, quick_replies);
+                  } else if (payload === 'HOW_TO_BOOK') {
+                    console.log(`🔔 Postback HOW_TO_BOOK from ${senderId}`);
+                    await sendMessageFn(senderId, howToBookText(), null);
                   }
                 }
               } catch (eventErr) {
