@@ -25,9 +25,10 @@ async function sendConfirmationMessage(messengerId, booking) {
 
     const bookingDetails = `📅 *Booking Confirmed!*\n\n*Reference:* ${booking.reference_code}\n*Customer:* ${booking.customer_name}\n*Phone:* ${booking.phone_number || 'N/A'}\n\n*Booking Details:*\n🎾 *Court:* ${booking.court || booking.court_name || 'N/A'}\n📆 *Date:* ${booking.booking_date || 'N/A'}\n⏰ *Time:* ${booking.time_slot || booking.booking_time || 'N/A'}\n💰 *Amount:* ₱${parseFloat(booking.price || booking.rate || 0).toFixed(2)}\n\n*Status:* ✅ CONFIRMED${booking.booking_notes ? `\n📝 *Notes:* ${booking.booking_notes}` : ''}\n\nThank you for booking with Pickle Social! 🎾\nSee you soon!`;
 
-    const url = `${FACEBOOK_GRAPH_API}/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
+    const url = new URL('/me/messages', FACEBOOK_GRAPH_API);
+    url.searchParams.set('access_token', PAGE_ACCESS_TOKEN);
 
-    const response = await fetch(url, {
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
