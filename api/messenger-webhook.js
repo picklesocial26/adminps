@@ -148,9 +148,10 @@ async function sendMessage(recipientId, message, quickReplies) {
       payload.message.quick_replies = quickReplies;
     }
 
-    const url = `https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
+    const url = new URL('/me/messages', 'https://graph.facebook.com/v18.0');
+    url.searchParams.set('access_token', PAGE_ACCESS_TOKEN);
 
-    const response = await fetch(url, {
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
