@@ -72,8 +72,9 @@ function formatBookingMessage(booking) {
   let statusEmoji = '⏳';
   let statusText = 'Pending';
   let message = '';
+  const status = booking.status ? booking.status.toLowerCase() : 'unknown';
 
-  switch (booking.status?.toLowerCase()) {
+  switch (status) {
     case 'pending':
       statusEmoji = '⏳';
       statusText = 'Pending';
@@ -100,12 +101,12 @@ function formatBookingMessage(booking) {
       message = `Your booking has been cancelled.\n\nIf you believe this is a mistake, please contact our support team.`;
       break;
     default:
-      message = `Your booking status: ${booking.status || 'Unknown'}`;
+      message = `Your booking status: ${status}`;
   }
 
   return {
     text: `${statusEmoji} **${statusText}**\n\nBooking Ref: ${booking.reference_code}\nCustomer: ${booking.customer_name}\n\n${message}`,
-    quick_replies: booking.status?.toLowerCase() === 'pending' ? [
+    quick_replies: status === 'pending' ? [
       {
         content_type: 'text',
         title: '🔄 Refresh Status',
@@ -118,7 +119,7 @@ function formatBookingMessage(booking) {
 /**
  * Send message via Facebook Messenger API
  */
-async function sendMessage(recipientId, message, quickReplies = null) {
+async function sendMessage(recipientId, message, quickReplies) {
   try {
     const payload = {
       recipient: { id: recipientId },
@@ -131,13 +132,14 @@ async function sendMessage(recipientId, message, quickReplies = null) {
       payload.message.quick_replies = quickReplies;
     }
 
-    const response = await fetch('https://graph.facebook.com/v18.0/me/messages', {
+    const url = `https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload),
-      qs: { access_token: PAGE_ACCESS_TOKEN }
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -153,20 +155,43 @@ async function sendMessage(recipientId, message, quickReplies = null) {
 }
 
 /**
+ * Store or update messenger ID for a booking
+ */
+async function updateMessengerId(reference, messengerId) {
+  try {
+    if (!reference || !messengerId) return;
+
+    const { error } = await supabase
+      .from('bookings')
+      .update({ messenger_id: messengerId })
+      .eq('reference_code', reference);
+
+    if (error) {
+      console.warn(`Could not store messenger ID for ${reference}:`, error.message);
+    } else {
+      console.log(`✅ Messenger ID stored for ${reference}`);
+    }
+  } catch (err) {
+    console.error('Error storing messenger ID:', err);
+  }
+}
+
+/**
  * Handle incoming messages
  */
 async function handleMessage(senderId, text) {
   const cleanText = text.trim().toUpperCase();
 
-  // Check if message is a booking reference (typically starts with 'REF' or similar pattern)
-  const referenceMatch = cleanText.match(/REF[A-Z0-9-]{0,20}/);
-  const reference = referenceMatch ? referenceMatch[0] : cleanText;
+  // Check if message is a booking reference
+  // Support formats like: REF-ABC123, PKL-ABCD123EFGH, ABC123, etc.
+  const referenceMatch = cleanText.match(/([A-Z]{0,4}[-]?[A-Z0-9]{6,20})/);
+  const reference = referenceMatch ? referenceMatch[0].replace(/\s/g, '') : cleanText;
 
   // Greeting messages
   if (cleanText.includes('HI') || cleanText.includes('HELLO') || cleanText.includes('START')) {
     await sendMessage(
       senderId,
-      'Hey! Welcome to Pickle Social! 🎾\n\nSend us your booking reference to check your booking status.\n\nExample: REF-ABC123'
+      'Hey! Welcome to Pickle Social! 🎾\n\nSend us your booking reference to check your booking status.\n\nExample: PKL-ABCD123EFGH'
     );
     return;
   }
@@ -175,13 +200,19 @@ async function handleMessage(senderId, text) {
   if (cleanText.includes('HELP')) {
     await sendMessage(
       senderId,
-      'Sure! Here\'s how to use me:\n\n1. Send your booking reference (e.g., REF-ABC123)\n2. I\'ll check your booking status\n3. You\'ll see if it\'s pending, confirmed, paid, or completed\n\nWhat\'s your booking reference?'
+      'Sure! Here\'s how to use me:\n\n1. Send your booking reference (e.g., PKL-ABCD123EFGH)\n2. I\'ll check your booking status\n3. You\'ll see if it\'s pending, confirmed, paid, or completed\n\nWhat\'s your booking reference?'
     );
     return;
   }
 
   // Query booking status
   const booking = await getBookingStatus(reference);
+  
+  // Store messenger ID when customer contacts about a valid booking
+  if (booking && booking.reference_code) {
+    await updateMessengerId(booking.reference_code, senderId);
+  }
+  
   const { text: messageText, quick_replies } = formatBookingMessage(booking);
 
   await sendMessage(senderId, messageText, quick_replies);
@@ -193,30 +224,34 @@ async function handleMessage(senderId, text) {
 async function handleEvents(req, res) {
   const body = req.body;
 
-  if (body.object === 'page') {
-    for (const entry of body.entry) {
-      for (const messaging_event of entry.messaging) {
-        if (messaging_event.message) {
-          const senderId = messaging_event.sender.id;
-          const messageText = messaging_event.message.text;
+  if (body && body.object === 'page') {
+    if (body.entry && Array.isArray(body.entry)) {
+      for (const entry of body.entry) {
+        if (entry.messaging && Array.isArray(entry.messaging)) {
+          for (const messaging_event of entry.messaging) {
+            if (messaging_event.message) {
+              const senderId = messaging_event.sender.id;
+              const messageText = messaging_event.message.text;
 
-          if (messageText) {
-            console.log(`Message from ${senderId}: ${messageText}`);
-            await handleMessage(senderId, messageText);
-          }
-        }
+              if (messageText) {
+                console.log(`📨 Message from ${senderId}: ${messageText}`);
+                await handleMessage(senderId, messageText);
+              }
+            }
 
-        // Handle postback (quick reply clicks)
-        if (messaging_event.postback) {
-          const senderId = messaging_event.sender.id;
-          const payload = messaging_event.postback.payload;
+            // Handle postback (quick reply clicks)
+            if (messaging_event.postback) {
+              const senderId = messaging_event.sender.id;
+              const payload = messaging_event.postback.payload;
 
-          if (payload.startsWith('CHECK_')) {
-            const reference = payload.replace('CHECK_', '');
-            console.log(`Refresh status for: ${reference}`);
-            const booking = await getBookingStatus(reference);
-            const { text: messageText, quick_replies } = formatBookingMessage(booking);
-            await sendMessage(senderId, messageText, quick_replies);
+              if (payload && payload.startsWith('CHECK_')) {
+                const reference = payload.replace('CHECK_', '');
+                console.log(`🔄 Refresh status for: ${reference}`);
+                const booking = await getBookingStatus(reference);
+                const { text: messageText, quick_replies } = formatBookingMessage(booking);
+                await sendMessage(senderId, messageText, quick_replies);
+              }
+            }
           }
         }
       }
@@ -236,19 +271,24 @@ async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  try {
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
 
-  if (req.method === 'GET') {
-    return handleVerification(req, res);
-  }
+    if (req.method === 'GET') {
+      return handleVerification(req, res);
+    }
 
-  if (req.method === 'POST') {
-    return handleEvents(req, res);
-  }
+    if (req.method === 'POST') {
+      return handleEvents(req, res);
+    }
 
-  res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+  } catch (err) {
+    console.error('❌ Handler error:', err.message || err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 }
 
 module.exports = handler;

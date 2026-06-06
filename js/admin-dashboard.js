@@ -1001,7 +1001,11 @@ async function confirmBookingViaMessenger(group) {
     const result = await response.json();
     console.log('Success response:', result);
 
-    showToast('✅ Booking confirmed! Messenger notification sent.');
+    if (result.messenger_notification_sent) {
+      showToast(`✅ ${result.customer_name} - Booking confirmed! Messenger notification sent.`);
+    } else {
+      showToast(`✅ ${result.customer_name} - Booking confirmed. Customer can check status anytime.`);
+    }
     await loadBookings();
   } catch (error) {
     console.error('Error confirming booking:', error);
