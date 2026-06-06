@@ -363,3 +363,9 @@ module.exports.getBookingStatus = getBookingStatus;
 // testing helpers
 module.exports.setSupabaseClient = setSupabaseClient;
 module.exports.setSendMessage = setSendMessage;
+
+// ESM compatibility: ensure default export and named `handler` are set for serverless builders
+module.exports.default = handler;
+module.exports.handler = handler;
+exports.default = handler;
+exports.handler = handler;
