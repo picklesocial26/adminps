@@ -30,15 +30,15 @@ function handleVerification(req, res) {
         res.status(200).send(challenge);
       } else {
         console.warn('❌ Invalid verification token or mode');
-        res.sendStatus(403);
+        res.status(403).end();
       }
     } else {
       console.warn('❌ Missing verification parameters');
-      res.sendStatus(400);
+      res.status(400).end();
     }
   } catch (err) {
     console.error('Error in verification:', err);
-    res.sendStatus(500);
+    res.status(500).end();
   }
 }
 
@@ -274,7 +274,7 @@ async function handleEvents(req, res) {
       }
       res.status(200).send('ok');
     } else {
-      res.sendStatus(404);
+      res.status(404).end();
     }
   } catch (err) {
     console.error('Error in handleEvents:', err);
