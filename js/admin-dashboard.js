@@ -255,8 +255,8 @@ function renderTable() {
       const confirmBtn = document.createElement('button');
       confirmBtn.className = 'action-btn confirm-btn';
       confirmBtn.textContent = 'Confirm';
-      confirmBtn.title = 'Confirm booking and send Messenger notification';
-      confirmBtn.onclick = () => confirmBookingViaMessenger(group);
+      confirmBtn.title = 'Confirm booking via ManyChat automation';
+      confirmBtn.onclick = () => confirmBookingViaManyChat(group);
       actionCell.appendChild(confirmBtn);
 
       const deleteBtn = document.createElement('button');
@@ -906,8 +906,8 @@ async function deleteBookingGroup(group) {
   await loadBookings();
 }
 
-// Payment confirmation functions removed - now handled via Messenger automation
-// Use the /api/confirm-booking endpoint to confirm bookings and send Messenger notifications
+// Payment confirmation functions removed - now handled via ManyChat automation
+// Use the /api/confirm-booking endpoint to confirm bookings and trigger ManyChat-based confirmation flows
 
 function copyBookingConfirmationText(group) {
   const customerName = group.customer_name || 'N/A';
@@ -958,8 +958,8 @@ function copyBookingConfirmationText(group) {
 // Confirm payment - now handled via Messenger automation through /api/confirm-booking
 // This function has been removed as bookings are now confirmed via direct Messenger API
 
-// Confirm booking via Messenger automation
-async function confirmBookingViaMessenger(group) {
+// Confirm booking via ManyChat automation
+async function confirmBookingViaManyChat(group) {
   const referenceCode = group.reference_code;
   if (!referenceCode) {
     showToast('⚠️ No reference code found');
@@ -969,18 +969,18 @@ async function confirmBookingViaMessenger(group) {
   const confirmed = confirm(
     `Confirm booking for ${group.customer_name}?\n\n` +
     `Reference: ${referenceCode}\n\n` +
-    `Customer will receive automatic Messenger notification with confirmation details.`
+    `Customer will receive automatic ManyChat confirmation once processed.`
   );
 
   if (!confirmed) return;
 
   try {
-    console.log('Confirming booking:', referenceCode);
+    console.log('Confirming booking via ManyChat:', referenceCode);
     
     const response = await fetch('/api/confirm-booking', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reference_code: referenceCode })
+      body: JSON.stringify({ reference_code: referenceCode, source: 'manychat' })
     });
 
     console.log('Response status:', response.status);
@@ -1001,10 +1001,12 @@ async function confirmBookingViaMessenger(group) {
     const result = await response.json();
     console.log('Success response:', result);
 
-    if (result.messenger_notification_sent) {
+    if (result.manychat_confirmed) {
+      showToast(`✅ ${result.customer_name} - Booking confirmed via ManyChat automation.`);
+    } else if (result.messenger_notification_sent) {
       showToast(`✅ ${result.customer_name} - Booking confirmed! Messenger notification sent.`);
     } else {
-      showToast(`✅ ${result.customer_name} - Booking confirmed. Customer can check status anytime.`);
+      showToast(`✅ ${result.customer_name} - Booking confirmed.`);
     }
     await loadBookings();
   } catch (error) {
