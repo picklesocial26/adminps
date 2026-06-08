@@ -34,6 +34,12 @@ function setSupabaseClient(client) {
 const VERIFY_TOKEN = process.env.MESSENGER_VERIFY_TOKEN;
 const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
 
+// Diagnostic: log whether Messenger tokens are configured (do NOT print token values)
+console.log('Messenger tokens configured?', {
+  verifyTokenPresent: !!VERIFY_TOKEN,
+  pageAccessTokenPresent: !!PAGE_ACCESS_TOKEN
+});
+
 /**
  * GET request handler for webhook verification
  */
@@ -223,11 +229,6 @@ async function handleMessage(senderId, text) {
             content_type: 'text',
             title: 'How to book',
             payload: 'HOW_TO_BOOK'
-          },
-          {
-            content_type: 'text',
-            title: 'Check Book',
-            payload: 'CHECK_BOOK'
           }
         ]
       );
@@ -244,11 +245,6 @@ async function handleMessage(senderId, text) {
             content_type: 'text',
             title: 'How to book',
             payload: 'HOW_TO_BOOK'
-          },
-          {
-            content_type: 'text',
-            title: 'Check Book',
-            payload: 'CHECK_BOOK'
           }
         ]
       );
@@ -290,6 +286,14 @@ async function handleEvents(req, res) {
   try {
     const body = req.body;
 
+    // Diagnostic: log minimal info about incoming webhook for debugging
+    try {
+      const preview = JSON.stringify(body).slice(0, 2000);
+      console.log('Incoming webhook body preview:', preview);
+    } catch (e) {
+      console.log('Incoming webhook body: <unserializable>');
+    }
+
     if (body && body.object === 'page') {
       if (body.entry && Array.isArray(body.entry)) {
         for (const entry of body.entry) {
@@ -307,13 +311,6 @@ async function handleEvents(req, res) {
                     if (qrPayload === 'HOW_TO_BOOK') {
                       console.log(`🔔 Quick reply HOW_TO_BOOK from ${senderId}`);
                       await sendMessageFn(senderId, howToBookText(), null);
-                    } else if (qrPayload === 'CHECK_BOOK') {
-                      console.log(`🔔 Quick reply CHECK_BOOK from ${senderId}`);
-                      await sendMessageFn(
-                        senderId,
-                        'Please send your booking reference so I can check it for you.\n\nExample: PKL-ABCD123EFGH',
-                        null
-                      );
                     }
                     continue; // Skip messageText processing for any quick_reply
                   }

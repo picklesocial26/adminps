@@ -1,4 +1,4 @@
-// admin-dashboard.js
+﻿// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { error } = await supabaseClient.from("bookings").select("id").limit(1);
     if (error) throw error;
     
-    showToast('✅ Connected to database');
+    showToast('Connected to database');
     
     // Set today's date as default range filter
     const today = new Date();
@@ -103,7 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateEarnings();
   } catch (err) {
     console.error('Initialization error:', err);
-    showToast('❌ Failed to connect to database');
+    showToast('Failed to connect to database');
   }
 });
 
@@ -134,7 +134,7 @@ async function loadBookings() {
     applyFilters();
   } catch (err) {
     console.error('Error loading bookings:', err);
-    showToast('❌ Failed to load bookings');
+    showToast('Failed to load bookings');
   }
 }
 
@@ -255,8 +255,8 @@ function renderTable() {
       const confirmBtn = document.createElement('button');
       confirmBtn.className = 'action-btn confirm-btn';
       confirmBtn.textContent = 'Confirm';
-      confirmBtn.title = 'Confirm booking via ManyChat automation';
-      confirmBtn.onclick = () => confirmBookingViaManyChat(group);
+      confirmBtn.title = 'Confirm booking and send Messenger notification';
+      confirmBtn.onclick = () => confirmBookingViaMessenger(group);
       actionCell.appendChild(confirmBtn);
 
       const deleteBtn = document.createElement('button');
@@ -337,7 +337,7 @@ function getSelectedBookings() {
 async function bulkMarkPaid() {
   const selected = getSelectedBookings();
   if (selected.length === 0) {
-    showToast('⚠️ No bookings selected');
+    showToast('No bookings selected');
     return;
   }
 
@@ -352,11 +352,11 @@ async function bulkMarkPaid() {
 
   if (error) {
     console.error('Bulk mark paid error:', error);
-    showToast('❌ Failed to mark paid');
+    showToast('Failed to mark paid');
     return;
   }
 
-  showToast('✅ Bookings marked paid');
+  showToast('Bookings marked paid');
   selectedBookingIds.clear();
   await loadBookings();
 }
@@ -364,7 +364,7 @@ async function bulkMarkPaid() {
 async function bulkCancel() {
   const selected = getSelectedBookings();
   if (selected.length === 0) {
-    showToast('⚠️ No bookings selected');
+    showToast('No bookings selected');
     return;
   }
 
@@ -379,11 +379,11 @@ async function bulkCancel() {
 
   if (error) {
     console.error('Bulk cancel error:', error);
-    showToast('❌ Failed to cancel');
+    showToast('Failed to cancel');
     return;
   }
 
-  showToast('✅ Bookings cancelled');
+  showToast('Bookings cancelled');
   selectedBookingIds.clear();
   await loadBookings();
 }
@@ -391,7 +391,7 @@ async function bulkCancel() {
 async function bulkDelete() {
   const selected = getSelectedBookings();
   if (selected.length === 0) {
-    showToast('⚠️ No bookings selected for delete');
+    showToast(' No bookings selected for delete');
     return;
   }
 
@@ -406,18 +406,18 @@ async function bulkDelete() {
 
   if (error) {
     console.error('Bulk delete error:', error);
-    showToast('❌ Failed to delete selected bookings');
+    showToast('Failed to delete selected bookings');
     return;
   }
 
-  showToast('✅ Selected bookings deleted');
+  showToast('Selected bookings deleted');
   selectedBookingIds.clear();
   await loadBookings();
 }
 
 function downloadCsv() {
   if (filteredBookings.length === 0) {
-    showToast('⚠️ No bookings to export');
+    showToast('No bookings to export');
     return;
   }
 
@@ -450,7 +450,7 @@ function downloadCsv() {
   link.download = `bookings_export_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
-  showToast('✅ Export ready');
+  showToast('Export ready');
 }
 
 // Format phone number
@@ -572,7 +572,7 @@ function closeBookingDetails() {
 function copyBookingDetailsConfirmation() {
   const group = currentBookingDetailsGroup;
   if (!group) {
-    showToast('⚠️ No booking details available to copy');
+    showToast('No booking details available to copy');
     return;
   }
 
@@ -596,34 +596,44 @@ function copyBookingDetailsConfirmation() {
     return acc;
   }, {});
 
-  const timeIcons = ['🕚', '🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+  const sortTime = (timeStr) => {
+    const match = timeStr.match(/(\d+):(\d+)\s(AM|PM)/);
+    if (!match) return 0;
+    let hours = parseInt(match[1]);
+    const minutes = parseInt(match[2]);
+    const meridiem = match[3];
+    if (meridiem === 'PM' && hours !== 12) hours += 12;
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+
+  Object.keys(courtGroups).forEach(court => {
+    courtGroups[court].sort((a, b) => sortTime(a) - sortTime(b));
+  });
+
+  const timeEmojis = ['🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕐', '🕑'];
+  let emojiIndex = 0;
   const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
-    const timeLines = times.map((timeSlot, index) => `${timeIcons[index] || '🕚'} ${timeSlot}`).join('\n');
-    return `🏟️ ${courtName}\n${timeLines}`;
+    const timesList = times.map(timeSlot => {
+      const emoji = timeEmojis[emojiIndex % timeEmojis.length];
+      emojiIndex++;
+      return `${emoji} ${timeSlot}`;
+    }).join('\n');
+    return `🏸 ${courtName}\n${timesList}`;
   }).join('\n\n');
 
-  const message =
-    `BOOKING CONFIRMATION\n\n` +
-    `Hello ${customerName},\n\n` +
-    `Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n` +
-    `📌 Booking Reference: ${bookingReference}\n` +
-    `💳 Total Paid: ${totalPaid}\n` +
-    `📅 Date: ${formattedDates}\n\n` +
-    `${bookingLines ? bookingLines + '\n\n' : ''}` +
-    `Thank you for booking with us! Your reservation has been successfully confirmed.`;
+  const message = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n📅 Date: ${formattedDates}\n\n${bookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(message).then(() => {
-      showToast('✅ Booking confirmation copied');
+      showToast('Booking confirmation copied');
     }).catch(() => {
       prompt('Copy the text below for Messenger:', message);
     });
   } else {
     prompt('Copy the text below for Messenger:', message);
   }
-}
-
-function previousPage() {
+}function previousPage() {
   if (currentPage > 1) {
     currentPage--;
     renderTable();
@@ -703,7 +713,7 @@ function closeReceiptViewer() {
 
 async function saveBookingChanges() {
   if (!currentEditingBooking || !supabaseClient) {
-    showToast('❌ Error: booking not selected');
+    showToast('Error: booking not selected');
     return;
   }
 
@@ -715,7 +725,7 @@ async function saveBookingChanges() {
   const notes = document.getElementById('editNotes').value.trim();
 
   if (!name || !phone) {
-    showToast('⚠️ Please fill in all required fields');
+    showToast('âš ï¸ Please fill in all required fields');
     return;
   }
 
@@ -744,7 +754,7 @@ async function saveBookingChanges() {
     console.log('Update response:', { data, error, status: responseStatus, statusText });
 
     if (error) {
-      console.error('❌ Update error:', error);
+      console.error('âŒ Update error:', error);
       console.error('Full error object:', JSON.stringify(error, null, 2));
       console.error('Error code:', error.code);
       console.error('Error message:', error.message);
@@ -777,14 +787,14 @@ async function saveBookingChanges() {
       return;
     }
 
-    console.log('✅ Booking updated successfully');
-    showToast('✅ Booking updated successfully');
+    console.log('Booking updated successfully');
+    showToast('Booking updated successfully');
     closeEditModal();
     await loadBookings();
   } catch (err) {
-    console.error('❌ Exception during update:', err);
+    console.error('âŒ Exception during update:', err);
     console.error('Error stack:', err.stack);
-    showToast('❌ Failed to save booking');
+    showToast('Failed to save booking');
   }
 }
 
@@ -792,16 +802,16 @@ async function saveBookingChanges() {
 function copyToClipboard(text) {
   if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
-    showToast('✅ Copied to clipboard');
+    showToast('Copied to clipboard');
   }).catch(() => {
-    showToast('❌ Failed to copy');
+    showToast(' Failed to copy');
   });
 }
 
 // Delete booking
 async function deleteBooking(booking) {
   if (!booking.status || booking.status !== 'pending') {
-    showToast('⚠️ Only pending bookings can be deleted');
+    showToast('Only pending bookings can be deleted');
     return;
   }
 
@@ -819,7 +829,7 @@ async function deleteBooking(booking) {
   }
 
   if (!supabaseClient) {
-    showToast('❌ Database not connected');
+    showToast('Database not connected');
     return;
   }
 
@@ -838,7 +848,7 @@ async function deleteBooking(booking) {
     console.log('Delete response:', { data, error, status, statusText });
 
     if (error) {
-      console.error('❌ Delete error:', error);
+      console.error('âŒ Delete error:', error);
       console.error('Error code:', error.code);
       console.error('Error message:', error.message);
       console.error('Error details:', error.details);
@@ -863,8 +873,8 @@ async function deleteBooking(booking) {
       throw error;
     }
 
-    console.log('✅ Booking deleted from database');
-    showToast('✅ Booking deleted successfully');
+    console.log('Booking deleted from database');
+    showToast('Booking deleted successfully');
     
     // Remove from local array and refresh UI immediately
     allBookings = allBookings.filter(b => b.id !== booking.id);
@@ -872,16 +882,16 @@ async function deleteBooking(booking) {
     updateEarnings();
     
   } catch (err) {
-    console.error('❌ Exception during delete:', err);
+    console.error('âŒ Exception during delete:', err);
     console.error('Error stack:', err.stack);
-    showToast('❌ Failed to delete booking');
+    showToast('Failed to delete booking');
   }
 }
 
 async function deleteBookingGroup(group) {
   const pendingIds = group.bookings.filter(b => b.status === 'pending').map(b => b.id);
   if (pendingIds.length === 0) {
-    showToast('⚠️ No pending bookings in this group to delete');
+    showToast('No pending bookings in this group to delete');
     return;
   }
 
@@ -897,17 +907,17 @@ async function deleteBookingGroup(group) {
 
   if (error) {
     console.error('Bulk delete group error:', error);
-    showToast('❌ Failed to delete bookings');
+    showToast('Failed to delete bookings');
     return;
   }
 
-  showToast('✅ Booking group deleted successfully');
+  showToast('Booking group deleted successfully');
   selectedBookingIds.clear();
   await loadBookings();
 }
 
-// Payment confirmation functions removed - now handled via ManyChat automation
-// Use the /api/confirm-booking endpoint to confirm bookings and trigger ManyChat-based confirmation flows
+// Payment confirmation functions removed - now handled via Messenger automation
+// Use the /api/confirm-booking endpoint to confirm bookings and send Messenger notifications
 
 function copyBookingConfirmationText(group) {
   const customerName = group.customer_name || 'N/A';
@@ -930,19 +940,19 @@ function copyBookingConfirmationText(group) {
     return acc;
   }, {});
 
-  const timeIcons = ['🕚', '🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+  const timeIcons = ['ðŸ•š', 'ðŸ•›', 'ðŸ•', 'ðŸ•‘', 'ðŸ•’', 'ðŸ•“', 'ðŸ•”', 'ðŸ••', 'ðŸ•–', 'ðŸ•—', 'ðŸ•˜', 'ðŸ•™'];
   const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
-    const timeLines = times.map((timeSlot, index) => `${timeIcons[index] || '🕚'} ${timeSlot}`).join('\n');
-    return `🏟️ ${courtName}\n${timeLines}`;
+    const timeLines = times.map((timeSlot, index) => `${timeIcons[index] || 'ðŸ•š'} ${timeSlot}`).join('\n');
+    return `ðŸŸï¸ ${courtName}\n${timeLines}`;
   }).join('\n\n');
 
   const message =
     `BOOKING CONFIRMATION\n\n` +
     `Hello ${customerName},\n\n` +
-    `Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n` +
-    `📌 Booking Reference: ${bookingReference}\n` +
-    `💳 Total Paid: ${totalPaid}\n` +
-    `📅 Date: ${formattedDates}\n\n` +
+    `Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. âœ…\n\n` +
+    `ðŸ“Œ Booking Reference: ${bookingReference}\n` +
+    `ðŸ’³ Total Paid: ${totalPaid}\n` +
+    `ðŸ“… Date: ${formattedDates}\n\n` +
     `${bookingLines ? bookingLines + '\n\n' : ''}` +
     `Thank you for booking with us! Your reservation has been successfully confirmed.`;
 
@@ -958,61 +968,135 @@ function copyBookingConfirmationText(group) {
 // Confirm payment - now handled via Messenger automation through /api/confirm-booking
 // This function has been removed as bookings are now confirmed via direct Messenger API
 
-// Confirm booking via ManyChat automation
-async function confirmBookingViaManyChat(group) {
+// Confirm booking - shows booking info in modal with copy button and updates status
+async function confirmBookingViaMessenger(group) {
   const referenceCode = group.reference_code;
   if (!referenceCode) {
-    showToast('⚠️ No reference code found');
+    showToast('No reference code found');
     return;
   }
 
-  const confirmed = confirm(
-    `Confirm booking for ${group.customer_name}?\n\n` +
-    `Reference: ${referenceCode}\n\n` +
-    `Customer will receive automatic ManyChat confirmation once processed.`
-  );
-
-  if (!confirmed) return;
-
   try {
-    console.log('Confirming booking via ManyChat:', referenceCode);
+    const customerName = group.customer_name || 'N/A';
+    const bookingReference = group.reference_code || 'N/A';
+    const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
+    const dates = Array.from(group.dates || new Set());
+    const formattedDates = dates.length
+      ? dates.map(d => {
+          const parsed = new Date(d);
+          if (isNaN(parsed)) return d;
+          return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        }).join(', ')
+      : 'N/A';
+
+    const courtGroups = (group.bookings || []).reduce((acc, booking) => {
+      const courtName = booking.court || booking.court_name || 'N/A';
+      const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+      if (!acc[courtName]) acc[courtName] = [];
+      if (!acc[courtName].includes(timeSlot)) acc[courtName].push(timeSlot);
+      return acc;
+    }, {});
+
+    // Sort times within each court
+    const sortTime = (timeStr) => {
+      const match = timeStr.match(/(\d+):(\d+)\s(AM|PM)/);
+      if (!match) return 0;
+      let hours = parseInt(match[1]);
+      const minutes = parseInt(match[2]);
+      const meridiem = match[3];
+      if (meridiem === 'PM' && hours !== 12) hours += 12;
+      if (meridiem === 'AM' && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    };
+
+    const timeEmojis = ['🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕐', '🕑'];
+    let emojiIndex = 0;
+
+    const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
+      const sortedTimes = times.sort((a, b) => sortTime(a) - sortTime(b));
+      const timesList = sortedTimes.map(t => {
+        const emoji = timeEmojis[emojiIndex % timeEmojis.length];
+        emojiIndex++;
+        return `${emoji} ${t}`;
+      }).join('\n');
+      return `🏸 ${courtName}\n${timesList}`;
+    }).join('\n\n');
+
+    const confirmationText = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n📅 Date: ${formattedDates}\n\n${bookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
+
+    // Store the text in a global variable for copying later
+    window.currentConfirmationText = confirmationText;
     
-    const response = await fetch('/api/confirm-booking', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reference_code: referenceCode, source: 'manychat' })
-    });
+    // Update booking status to "paid" in Supabase
+    if (group.ids && group.ids.length > 0 && supabaseClient) {
+      const { error } = await supabaseClient
+        .from('bookings')
+        .update({ status: 'paid' })
+        .in('id', group.ids);
 
-    console.log('Response status:', response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      let errorMessage = 'Failed to confirm booking';
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (e) {
-        errorMessage = `Server error (${response.status})`;
+      if (error) {
+        console.error('Error updating booking status:', error);
+        showToast('Warning: Could not update booking status');
+      } else {
+        console.log('Booking status updated to paid');
       }
-      throw new Error(errorMessage);
     }
-
-    const result = await response.json();
-    console.log('Success response:', result);
-
-    if (result.manychat_confirmed) {
-      showToast(`✅ ${result.customer_name} - Booking confirmed via ManyChat automation.`);
-    } else if (result.messenger_notification_sent) {
-      showToast(`✅ ${result.customer_name} - Booking confirmed! Messenger notification sent.`);
-    } else {
-      showToast(`✅ ${result.customer_name} - Booking confirmed.`);
-    }
+    
+    // Display in modal
+    document.getElementById('confirmationText').textContent = confirmationText;
+    document.getElementById('bookingConfirmationModal').style.display = 'flex';
+    
+    // Reload bookings to reflect the status change
     await loadBookings();
   } catch (error) {
-    console.error('Error confirming booking:', error);
-    showToast(`❌ ${error.message || 'Failed to confirm booking'}`);
+    console.error('Error processing booking:', error);
+    showToast(`Error: ${error.message}`);
   }
+}
+
+function closeBookingConfirmationModal() {
+  document.getElementById('bookingConfirmationModal').style.display = 'none';
+}
+
+function copyConfirmationText() {
+  const text = window.currentConfirmationText;
+  if (!text) {
+    showToast('No confirmation text to copy');
+    return;
+  }
+  
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Booking info copied to clipboard!');
+    
+    // Close the modal
+    closeBookingConfirmationModal();
+    
+    // Detect if mobile device
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      // On mobile, try to open Business Suite app or Messenger
+      // For iOS
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        window.location.href = 'fb://'; // Opens Facebook app
+      } 
+      // For Android
+      else {
+        window.location.href = 'fb://'; // Opens Facebook app
+      }
+      
+      // Fallback to web after a delay if app doesn't open
+      setTimeout(() => {
+        window.open('https://business.facebook.com/latest/inbox/messenger', '_blank');
+      }, 1500);
+    } else {
+      // On desktop, open the web URL
+      window.open('https://business.facebook.com/latest/inbox/messenger', '_blank');
+    }
+  }).catch(err => {
+    console.error('Failed to copy:', err);
+    showToast('Failed to copy booking info');
+  });
 }
 
 function openTodayModal() {
@@ -1044,7 +1128,7 @@ function openTodayModal() {
       item.className = 'list-item';
       item.innerHTML = `
         <div class="list-item-top">
-          <div><strong>${booking.customer_name || 'Unknown'}</strong> · ${booking.court || booking.court_name || 'Court'}</div>
+          <div><strong>${booking.customer_name || 'Unknown'}</strong> Â· ${booking.court || booking.court_name || 'Court'}</div>
           <div class="status-badge ${booking.status || 'pending'}">${booking.status || 'pending'}</div>
         </div>
         <div class="list-item-bottom">
@@ -1092,3 +1176,79 @@ document.addEventListener('keydown', (e) => {
     closeTodayModal();
   }
 });
+
+
+
+// Maintenance Mode Toggle
+const DEVELOPER_PASSWORD = 'pickle2024'; // Developer password for maintenance mode
+
+window.handleMaintenanceToggle = function() {
+  const toggle = document.getElementById('maintenanceToggle');
+  
+  // If turning on, show password modal
+  if (toggle.checked) {
+    toggle.checked = false; // Revert until password is verified
+    document.getElementById('maintenancePasswordModal').style.display = 'flex';
+    document.getElementById('maintenancePassword').value = '';
+    document.getElementById('passwordError').style.display = 'none';
+    document.getElementById('maintenancePassword').focus();
+  } else {
+    // If turning off, disable without password
+    localStorage.setItem('maintenanceMode', 'false');
+    showToast('Maintenance mode disabled');
+  }
+};
+
+window.verifyMaintenancePassword = function() {
+  const passwordInput = document.getElementById('maintenancePassword');
+  const errorDiv = document.getElementById('passwordError');
+  const password = passwordInput.value;
+  
+  if (!password) {
+    errorDiv.textContent = 'Please enter a password';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  
+  if (password === DEVELOPER_PASSWORD) {
+    localStorage.setItem('maintenanceMode', 'true');
+    document.getElementById('maintenanceToggle').checked = true;
+    closeMaintenancePasswordModal();
+    showToast('✓ Maintenance mode enabled');
+  } else {
+    errorDiv.textContent = 'Incorrect password';
+    errorDiv.style.display = 'block';
+    passwordInput.value = '';
+    passwordInput.focus();
+  }
+};
+
+window.closeMaintenancePasswordModal = function() {
+  document.getElementById('maintenancePasswordModal').style.display = 'none';
+  document.getElementById('maintenancePassword').value = '';
+  document.getElementById('passwordError').style.display = 'none';
+};
+
+// Allow pressing Enter to verify password
+document.addEventListener('DOMContentLoaded', () => {
+  const passwordInput = document.getElementById('maintenancePassword');
+  if (passwordInput) {
+    passwordInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        window.verifyMaintenancePassword();
+      }
+    });
+  }
+});
+
+// Load maintenance mode on page load
+window.addEventListener('DOMContentLoaded', () => {
+  const toggle = document.getElementById('maintenanceToggle');
+  const maintenanceOn = localStorage.getItem('maintenanceMode') === 'true';
+  
+  if (toggle) {
+    toggle.checked = maintenanceOn;
+  }
+});
+
+

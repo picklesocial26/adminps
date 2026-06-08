@@ -1,8 +1,6 @@
 /**
  * Confirm Booking API
- * Updates booking status to confirmed and supports ManyChat automation.
- * If the request comes from ManyChat, the backend updates the booking only
- * and returns a confirmation payload for ManyChat to send to the customer.
+ * Updates booking status to confirmed and sends Messenger notification with booking details
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -56,9 +54,7 @@ async function sendConfirmationMessage(messengerId, booking) {
 /**
  * Confirm a booking and notify customer
  */
-async function confirmBooking(referenceCode, options = {}) {
-  const { isManyChat = false, subscriberId = null } = options;
-
+async function confirmBooking(referenceCode) {
   try {
     // Fetch booking details
     const { data: booking, error: fetchError } = await supabase
@@ -77,15 +73,13 @@ async function confirmBooking(referenceCode, options = {}) {
     }
 
     // Update booking status to confirmed
-    const updatePayload = {
-      status: 'confirmed',
-      confirmed_at: new Date().toISOString(),
-      confirmed_by: 'admin'
-    };
-
     const { error: updateError } = await supabase
       .from('bookings')
-      .update(updatePayload)
+      .update({ 
+        status: 'confirmed',
+        confirmed_at: new Date().toISOString(),
+        confirmed_by: 'admin'
+      })
       .eq('reference_code', referenceCode);
 
     if (updateError) {
@@ -97,55 +91,20 @@ async function confirmBooking(referenceCode, options = {}) {
       };
     }
 
-    // If the request comes from ManyChat, do not send a duplicate Messenger notification.
+    // Send confirmation message via Messenger
     let messengerNotificationSent = false;
-    if (!isManyChat && booking.messenger_id) {
+    if (booking.messenger_id) {
       messengerNotificationSent = await sendConfirmationMessage(booking.messenger_id, booking);
-    }
-
-    // Send via ManyChat if configured and subscriber id exists (avoid duplicate when request originates from ManyChat)
-    let manychatNotificationSent = false;
-    const MANYCHAT_URL = process.env.MANYCHAT_SEND_URL; // configurable endpoint
-    const MANYCHAT_TOKEN = process.env.MANYCHAT_API_TOKEN;
-
-    if (!isManyChat && booking.manychat_subscriber_id && MANYCHAT_URL && MANYCHAT_TOKEN) {
-      try {
-        const bookingDetails = `📅 Booking Confirmed!\n\nReference: ${booking.reference_code}\nCustomer: ${booking.customer_name}\nPhone: ${booking.phone_number || 'N/A'}\n\nBooking Details:\nCourt: ${booking.court || booking.court_name || 'N/A'}\nDate: ${booking.booking_date || 'N/A'}\nTime: ${booking.time_slot || booking.booking_time || 'N/A'}\nAmount: ₱${parseFloat(booking.price || booking.rate || 0).toFixed(2)}\n\nStatus: CONFIRMED${booking.booking_notes ? `\nNotes: ${booking.booking_notes}` : ''}`;
-
-        const resp = await fetch(MANYCHAT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${MANYCHAT_TOKEN}`
-          },
-          body: JSON.stringify({
-            subscriber_id: booking.manychat_subscriber_id,
-            message: { text: bookingDetails }
-          })
-        });
-
-        if (resp.ok) {
-          manychatNotificationSent = true;
-          console.log(`✅ ManyChat confirmation sent to ${booking.manychat_subscriber_id}`);
-        } else {
-          const errData = await resp.text().catch(() => '');
-          console.warn('ManyChat API error:', resp.status, errData);
-        }
-      } catch (mcErr) {
-        console.error('Error sending ManyChat notification:', mcErr);
-      }
     }
 
     return {
       success: true,
       reference_code: referenceCode,
       customer_name: booking.customer_name,
-      manychat_confirmed: isManyChat,
       messenger_notification_sent: messengerNotificationSent,
-      manychat_notification_sent: manychatNotificationSent,
-      message: isManyChat
-        ? 'Booking confirmed via ManyChat automation.'
-        : (manychatNotificationSent ? 'Booking confirmed! Customer notified via ManyChat.' : (messengerNotificationSent ? 'Booking confirmed! Customer notified via Messenger.' : 'Booking confirmed. Customer can check status anytime by messaging us.'))
+      message: messengerNotificationSent 
+        ? 'Booking confirmed! Customer notified via Messenger.'
+        : 'Booking confirmed. Customer can check status anytime by messaging us.'
     };
   } catch (err) {
     console.error('Error in confirmBooking:', err);
@@ -175,15 +134,13 @@ async function handler(req, res) {
   }
 
   try {
-    const { reference_code, bookingReference, reference, subscriber_id, subscriberId, source, manychat } = req.body;
-    const resolvedReference = reference_code || bookingReference || reference;
-    const isManyChat = String(source || manychat || '').toLowerCase() === 'manychat';
+    const { reference_code } = req.body;
 
-    if (!resolvedReference) {
-      return res.status(400).json({ error: 'Missing booking reference parameter' });
+    if (!reference_code) {
+      return res.status(400).json({ error: 'Missing reference_code parameter' });
     }
 
-    const result = await confirmBooking(resolvedReference, { isManyChat, subscriberId: subscriber_id || subscriberId });
+    const result = await confirmBooking(reference_code);
 
     if (result.success) {
       return res.status(200).json(result);

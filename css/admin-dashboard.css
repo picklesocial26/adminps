@@ -77,6 +77,18 @@ nav {
   transition: transform 140ms ease, box-shadow 180ms ease, filter 180ms ease;
 }
 
+.nav-brand a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.nav-brand a:hover .nav-logo {
+  transform: scale(1.1);
+  filter: brightness(1.2);
+}
+
 .nav-actions {
   display: flex;
   gap: 10px;
