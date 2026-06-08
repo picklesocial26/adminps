@@ -103,17 +103,49 @@ async function confirmBooking(referenceCode, options = {}) {
       messengerNotificationSent = await sendConfirmationMessage(booking.messenger_id, booking);
     }
 
+    // Send via ManyChat if configured and subscriber id exists (avoid duplicate when request originates from ManyChat)
+    let manychatNotificationSent = false;
+    const MANYCHAT_URL = process.env.MANYCHAT_SEND_URL; // configurable endpoint
+    const MANYCHAT_TOKEN = process.env.MANYCHAT_API_TOKEN;
+
+    if (!isManyChat && booking.manychat_subscriber_id && MANYCHAT_URL && MANYCHAT_TOKEN) {
+      try {
+        const bookingDetails = `📅 Booking Confirmed!\n\nReference: ${booking.reference_code}\nCustomer: ${booking.customer_name}\nPhone: ${booking.phone_number || 'N/A'}\n\nBooking Details:\nCourt: ${booking.court || booking.court_name || 'N/A'}\nDate: ${booking.booking_date || 'N/A'}\nTime: ${booking.time_slot || booking.booking_time || 'N/A'}\nAmount: ₱${parseFloat(booking.price || booking.rate || 0).toFixed(2)}\n\nStatus: CONFIRMED${booking.booking_notes ? `\nNotes: ${booking.booking_notes}` : ''}`;
+
+        const resp = await fetch(MANYCHAT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${MANYCHAT_TOKEN}`
+          },
+          body: JSON.stringify({
+            subscriber_id: booking.manychat_subscriber_id,
+            message: { text: bookingDetails }
+          })
+        });
+
+        if (resp.ok) {
+          manychatNotificationSent = true;
+          console.log(`✅ ManyChat confirmation sent to ${booking.manychat_subscriber_id}`);
+        } else {
+          const errData = await resp.text().catch(() => '');
+          console.warn('ManyChat API error:', resp.status, errData);
+        }
+      } catch (mcErr) {
+        console.error('Error sending ManyChat notification:', mcErr);
+      }
+    }
+
     return {
       success: true,
       reference_code: referenceCode,
       customer_name: booking.customer_name,
       manychat_confirmed: isManyChat,
       messenger_notification_sent: messengerNotificationSent,
+      manychat_notification_sent: manychatNotificationSent,
       message: isManyChat
         ? 'Booking confirmed via ManyChat automation.'
-        : messengerNotificationSent
-          ? 'Booking confirmed! Customer notified via Messenger.'
-          : 'Booking confirmed. Customer can check status anytime by messaging us.'
+        : (manychatNotificationSent ? 'Booking confirmed! Customer notified via ManyChat.' : (messengerNotificationSent ? 'Booking confirmed! Customer notified via Messenger.' : 'Booking confirmed. Customer can check status anytime by messaging us.'))
     };
   } catch (err) {
     console.error('Error in confirmBooking:', err);
