@@ -91,12 +91,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     showToast('Connected to database');
     
-    // Set today's date as default range filter
+    // Set today's date as default range filter (local timezone, no UTC conversion)
     const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+    
     const dateFrom = document.getElementById('filterFrom');
     const dateTo = document.getElementById('filterTo');
-    if (dateFrom) dateFrom.valueAsDate = today;
-    if (dateTo) dateTo.valueAsDate = today;
+    if (dateFrom) dateFrom.value = dateString;
+    if (dateTo) dateTo.value = dateString;
     
     // Load initial data
     await loadBookings();
@@ -468,36 +473,65 @@ function formatPhone(phone) {
 
 // Update earnings cards
 function updateEarnings() {
-  const today = new Date();
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  const monthAgo = new Date(today);
-  monthAgo.setMonth(monthAgo.getMonth() - 1);
+  // Get date filter if set, otherwise use today's date
+  const dateFromInput = document.getElementById('filterFrom');
+  let selectedDate;
+  
+  if (dateFromInput?.value) {
+    selectedDate = new Date(dateFromInput.value);
+  } else {
+    selectedDate = new Date();
+  }
 
-  const todayKey = formatDateKey(today);
-  const weekAgoKey = formatDateKey(weekAgo);
-  const monthAgoKey = formatDateKey(monthAgo);
+  // Helper function to normalize date comparison
+  const normalizeDate = (dateStr) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  };
 
-  // Calculate totals
-  const todayBookings = filteredBookings.filter(b => 
-    b.booking_date === todayKey && (b.status === 'paid' || b.status === 'completed')
-  );
-  const todayEarnings = todayBookings.reduce((sum, b) => sum + (b.price || b.rate || 0), 0);
+  const selectedDateNormalized = normalizeDate(formatDateKey(selectedDate));
 
-  const weeklyBookings = filteredBookings.filter(b => {
-    const bDate = new Date(b.booking_date);
-    return bDate >= weekAgo && bDate <= today && (b.status === 'paid' || b.status === 'completed');
+  // Calculate the week range (Sunday to Saturday)
+  const dayOfWeek = selectedDate.getDay();
+  const weekStart = new Date(selectedDate);
+  weekStart.setDate(selectedDate.getDate() - dayOfWeek); // Start from Sunday
+  
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6); // End on Saturday
+
+  // Calculate the month range (1st to last day)
+  const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+  const monthEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+
+  // Use all bookings for earnings overview
+  const bookingsToUse = allBookings;
+
+  // Today's earnings - bookings on the selected date only
+  const todayBookings = bookingsToUse.filter(b => {
+    const bDate = normalizeDate(b.booking_date);
+    return bDate && bDate.getTime() === selectedDateNormalized.getTime() && b.status !== 'cancelled';
   });
-  const weeklyEarnings = weeklyBookings.reduce((sum, b) => sum + (b.price || b.rate || 0), 0);
+  const todayEarnings = todayBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
 
-  const monthlyBookings = filteredBookings.filter(b => {
-    const bDate = new Date(b.booking_date);
-    return bDate >= monthAgo && bDate <= today && (b.status === 'paid' || b.status === 'completed');
+  // Weekly earnings - Sunday to Saturday of the selected week
+  const weeklyBookings = bookingsToUse.filter(b => {
+    const bDate = normalizeDate(b.booking_date);
+    return bDate && bDate >= weekStart && bDate <= weekEnd && b.status !== 'cancelled';
   });
-  const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + (b.price || b.rate || 0), 0);
+  const weeklyEarnings = weeklyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
 
-  const pendingBookings = filteredBookings.filter(b => b.status === 'pending');
-  const pendingAmount = pendingBookings.reduce((sum, b) => sum + (b.price || b.rate || 0), 0);
+  // Monthly earnings - all bookings in the month
+  const monthlyBookings = bookingsToUse.filter(b => {
+    const bDate = normalizeDate(b.booking_date);
+    return bDate && bDate >= monthStart && bDate <= monthEnd && b.status !== 'cancelled';
+  });
+  const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
+
+  // Pending payments from all bookings
+  const pendingBookings = bookingsToUse.filter(b => b.status === 'pending');
+  const pendingAmount = pendingBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
 
   // Update UI
   document.getElementById('todayEarnings').textContent = '₱' + todayEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -511,6 +545,8 @@ function updateEarnings() {
 
   document.getElementById('pendingAmount').textContent = '₱' + pendingAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('pendingCount').textContent = `${pendingBookings.length} booking${pendingBookings.length !== 1 ? 's' : ''}`;
+
+  console.log('Earnings updated:', { todayEarnings, weeklyEarnings, monthlyEarnings, pendingAmount, selectedDate: formatDateKey(selectedDate), weekStart: formatDateKey(weekStart), weekEnd: formatDateKey(weekEnd), monthStart: formatDateKey(monthStart), monthEnd: formatDateKey(monthEnd) });
 }
 
 // Format date to YYYY-MM-DD
@@ -579,22 +615,6 @@ function copyBookingDetailsConfirmation() {
   const customerName = group.customer_name || 'N/A';
   const bookingReference = group.reference_code || 'N/A';
   const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
-  const dates = Array.from(group.dates || new Set());
-  const formattedDates = dates.length
-    ? dates.map(d => {
-        const parsed = new Date(d);
-        if (isNaN(parsed)) return d;
-        return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      }).join(', ')
-    : 'N/A';
-
-  const courtGroups = (group.bookings || []).reduce((acc, booking) => {
-    const courtName = booking.court || booking.court_name || 'N/A';
-    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
-    if (!acc[courtName]) acc[courtName] = [];
-    if (!acc[courtName].includes(timeSlot)) acc[courtName].push(timeSlot);
-    return acc;
-  }, {});
 
   const sortTime = (timeStr) => {
     const match = timeStr.match(/(\d+):(\d+)\s(AM|PM)/);
@@ -607,22 +627,44 @@ function copyBookingDetailsConfirmation() {
     return hours * 60 + minutes;
   };
 
-  Object.keys(courtGroups).forEach(court => {
-    courtGroups[court].sort((a, b) => sortTime(a) - sortTime(b));
-  });
+  // Group bookings by date
+  const dateGroups = (group.bookings || []).reduce((acc, booking) => {
+    const date = booking.booking_date || 'N/A';
+    const courtName = booking.court || booking.court_name || 'N/A';
+    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+    
+    if (!acc[date]) acc[date] = {};
+    if (!acc[date][courtName]) acc[date][courtName] = [];
+    if (!acc[date][courtName].includes(timeSlot)) acc[date][courtName].push(timeSlot);
+    
+    return acc;
+  }, {});
 
-  const timeEmojis = ['🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕐', '🕑'];
+  // Sort dates
+  const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
+
+  // Build message with separated dates
+  const timeEmojis = ['', '', '', '', '', '', '', '', '', '', ''];
   let emojiIndex = 0;
-  const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
-    const timesList = times.map(timeSlot => {
-      const emoji = timeEmojis[emojiIndex % timeEmojis.length];
-      emojiIndex++;
-      return `${emoji} ${timeSlot}`;
-    }).join('\n');
-    return `🏸 ${courtName}\n${timesList}`;
+
+  const dateBookingLines = sortedDates.map(date => {
+    const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const courtGroups = dateGroups[date];
+    
+    const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
+      times.sort((a, b) => sortTime(a) - sortTime(b));
+      const timesList = times.map(timeSlot => {
+        const emoji = timeEmojis[emojiIndex % timeEmojis.length];
+        emojiIndex++;
+        return `${emoji} ${timeSlot}`;
+      }).join('\n');
+      return `${courtName}\n${timesList}`;
+    }).join('\n\n');
+
+    return `📅 ${formattedDate}\n${courtLines}`;
   }).join('\n\n');
 
-  const message = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n📅 Date: ${formattedDates}\n\n${bookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
+  const message = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n\n${dateBookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(message).then(() => {
@@ -980,24 +1022,7 @@ async function confirmBookingViaMessenger(group) {
     const customerName = group.customer_name || 'N/A';
     const bookingReference = group.reference_code || 'N/A';
     const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
-    const dates = Array.from(group.dates || new Set());
-    const formattedDates = dates.length
-      ? dates.map(d => {
-          const parsed = new Date(d);
-          if (isNaN(parsed)) return d;
-          return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        }).join(', ')
-      : 'N/A';
 
-    const courtGroups = (group.bookings || []).reduce((acc, booking) => {
-      const courtName = booking.court || booking.court_name || 'N/A';
-      const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
-      if (!acc[courtName]) acc[courtName] = [];
-      if (!acc[courtName].includes(timeSlot)) acc[courtName].push(timeSlot);
-      return acc;
-    }, {});
-
-    // Sort times within each court
     const sortTime = (timeStr) => {
       const match = timeStr.match(/(\d+):(\d+)\s(AM|PM)/);
       if (!match) return 0;
@@ -1009,20 +1034,44 @@ async function confirmBookingViaMessenger(group) {
       return hours * 60 + minutes;
     };
 
-    const timeEmojis = ['🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕐', '🕑'];
+    // Group bookings by date
+    const dateGroups = (group.bookings || []).reduce((acc, booking) => {
+      const date = booking.booking_date || 'N/A';
+      const courtName = booking.court || booking.court_name || 'N/A';
+      const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+      
+      if (!acc[date]) acc[date] = {};
+      if (!acc[date][courtName]) acc[date][courtName] = [];
+      if (!acc[date][courtName].includes(timeSlot)) acc[date][courtName].push(timeSlot);
+      
+      return acc;
+    }, {});
+
+    // Sort dates
+    const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
+
+    // Build message with separated dates
+    const timeEmojis = ['', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕐', '🕑'];
     let emojiIndex = 0;
 
-    const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
-      const sortedTimes = times.sort((a, b) => sortTime(a) - sortTime(b));
-      const timesList = sortedTimes.map(t => {
-        const emoji = timeEmojis[emojiIndex % timeEmojis.length];
-        emojiIndex++;
-        return `${emoji} ${t}`;
-      }).join('\n');
-      return `🏸 ${courtName}\n${timesList}`;
+    const dateBookingLines = sortedDates.map(date => {
+      const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const courtGroups = dateGroups[date];
+      
+      const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
+        times.sort((a, b) => sortTime(a) - sortTime(b));
+        const timesList = times.map(timeSlot => {
+          const emoji = timeEmojis[emojiIndex % timeEmojis.length];
+          emojiIndex++;
+          return `${emoji} ${timeSlot}`;
+        }).join('\n');
+        return `${courtName}\n${timesList}`;
+      }).join('\n\n');
+
+      return `📅 ${formattedDate}\n${courtLines}`;
     }).join('\n\n');
 
-    const confirmationText = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n📅 Date: ${formattedDates}\n\n${bookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
+    const confirmationText = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n\n${dateBookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
 
     // Store the text in a global variable for copying later
     window.currentConfirmationText = confirmationText;

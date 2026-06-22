@@ -877,36 +877,49 @@ document.addEventListener("DOMContentLoaded", async () => {
       const firstBooking = bookings[0] || bookingDetails || {};
       const customerName = firstBooking.customer_name || 'Guest';
       const totalAmount = bookings.reduce((sum, b) => sum + (b.price || b.rate || 0), 0);
-      const bookingDate = firstBooking.booking_date || 'N/A';
+      const referenceCodeDisplay = referenceCode || 'N/A';
       
-      // Group bookings by court
-      const slotsByCount = {};
-      const timeSlots = {};
-      
+      // Group bookings by date, then by court
+      const dateGroups = {};
       bookings.forEach(booking => {
+        const date = booking.booking_date || 'N/A';
         const court = booking.court_name || booking.court || 'Court';
-        if (!slotsByCount[court]) {
-          slotsByCount[court] = [];
-        }
         const timeSlot = booking.time_slot || booking.booking_time || '';
-        slotsByCount[court].push(timeSlot);
+        
+        if (!dateGroups[date]) {
+          dateGroups[date] = {};
+        }
+        if (!dateGroups[date][court]) {
+          dateGroups[date][court] = [];
+        }
+        dateGroups[date][court].push(timeSlot);
       });
 
-      // Build formatted confirmation message
+      // Sort dates and build formatted confirmation message
+      const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
+      
       let courtSections = '';
       const courtOrder = ['Court One', 'Court Two'];
-      courtOrder.forEach(court => {
-        if (slotsByCount[court] && slotsByCount[court].length > 0) {
-          const slots = slotsByCount[court];
-          const emoji = court === 'Court One' ? '🏟️' : '🏟️';
-          courtSections += `\n${emoji} ${court}\n`;
-          
-          const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
-          slots.forEach((slot, idx) => {
-            const emoji = timeEmojis[idx % timeEmojis.length];
-            courtSections += `${emoji} ${slot}\n`;
-          });
-        }
+      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+      let emojiIndex = 0;
+      
+      sortedDates.forEach(date => {
+        const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        courtSections += `\n📅 ${formattedDate}`;
+        
+        const courts = dateGroups[date];
+        courtOrder.forEach(court => {
+          if (courts[court] && courts[court].length > 0) {
+            const slots = courts[court];
+            courtSections += `\n${court}\n`;
+            
+            slots.forEach((slot) => {
+              const timeEmoji = timeEmojis[emojiIndex % timeEmojis.length];
+              emojiIndex++;
+              courtSections += `${timeEmoji} ${slot}\n`;
+            });
+          }
+        });
       });
 
       const confirmationMessage = `BOOKING CONFIRMATION
@@ -917,9 +930,8 @@ Thank you for booking with Pickle Social - Cebu! Your reservation has been succe
 
 Name: ${firstBooking.customer_name || ''}
 Phone: ${firstBooking.phone_number || ''}
-📌 Booking Reference: ${referenceCode}
-💳 Total Paid: ₱${totalAmount.toLocaleString()}
-📅 Date: ${bookingDate}${courtSections}`;
+📌 Booking Reference: ${referenceCodeDisplay}
+💳 Total Paid: ₱${totalAmount.toLocaleString()}${courtSections}`;
 
       // Copy to clipboard
       if (navigator.clipboard) {
@@ -1169,7 +1181,7 @@ Phone: ${firstBooking.phone_number || ''}
         });
       }
 
-      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '�', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
       const courtSections = Object.entries(courtGroups).map(([court, times]) => {
         const sortedTimes = times.slice().sort();
         const timesHtml = sortedTimes.map((time, index) => `
@@ -1180,7 +1192,7 @@ Phone: ${firstBooking.phone_number || ''}
         `).join('');
         return `
           <div style="padding:12px;border-radius:12px;border:1px solid rgba(236,72,153,0.14);background:rgba(255,255,255,0.03);">
-            <div style="font-weight:700;color:#f8fafc;margin-bottom:8px;">🏟️ ${court}</div>
+            <div style="font-weight:700;color:#f8fafc;margin-bottom:8px;">${court}</div>
             ${timesHtml}
           </div>
         `;
