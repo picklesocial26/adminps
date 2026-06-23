@@ -3,279 +3,317 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Admin Login - Pickle Social</title>
+  <title>Admin Dashboard - Pickle Social</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
   <link rel="icon" href="logo.jpeg" type="image/jpeg">
 
-  <style>
-    :root {
-      --bg: #08090c;
-      --accent: #ec4899;
-      --accent-deep: #be185d;
-      --text-primary: #e5e7eb;
-      --gray-text: #94a3b8;
-      --glow-pink: rgba(236,72,153,0.14);
-      --glow-mint: rgba(139,195,74,0.12);
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: 'DM Sans', sans-serif;
-      background: radial-gradient(circle at 12% 10%, var(--glow-pink) 0%, transparent 18%),
-                  radial-gradient(circle at 88% 80%, var(--glow-mint) 0%, transparent 22%),
-                  linear-gradient(180deg, #07080b 0%, #181d27 100%);
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    .login-container {
-      width: 100%;
-      max-width: 400px;
-      background: rgba(15, 19, 25, 0.95);
-      border: 1px solid rgba(236, 72, 153, 0.2);
-      border-radius: 16px;
-      padding: 40px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-    }
-
-    .login-header {
-      text-align: center;
-      margin-bottom: 32px;
-    }
-
-    .login-logo {
-      height: 48px;
-      margin-bottom: 16px;
-      display: block;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    .login-header h1 {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 1.8rem;
-      font-weight: 800;
-      margin-bottom: 8px;
-      letter-spacing: -0.5px;
-    }
-
-    .login-header h1 span {
-      color: var(--accent);
-    }
-
-    .login-header p {
-      color: var(--gray-text);
-      font-size: 0.9rem;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-
-    .form-group label {
-      font-weight: 600;
-      font-size: 0.9rem;
-      color: var(--text-primary);
-    }
-
-    .form-group input {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: var(--text-primary);
-      padding: 12px 14px;
-      border-radius: 10px;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 1rem;
-      transition: all 0.15s;
-    }
-
-    .form-group input::placeholder {
-      color: rgba(255, 255, 255, 0.4);
-    }
-
-    .form-group input:focus {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(236, 72, 153, 0.3);
-      outline: none;
-    }
-
-    .login-btn {
-      width: 100%;
-      background: linear-gradient(135deg, var(--accent-deep), var(--accent));
-      color: white;
-      border: none;
-      padding: 12px;
-      border-radius: 10px;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      font-weight: 700;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: all 0.15s;
-      margin-top: 8px;
-    }
-
-    .login-btn:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 36px rgba(236, 72, 153, 0.3);
-    }
-
-    .login-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .error-message {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      color: #ef4444;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      margin-bottom: 16px;
-      display: none;
-    }
-
-    .error-message.show {
-      display: block;
-    }
-
-    .back-link {
-      text-align: center;
-      margin-top: 24px;
-    }
-
-    .back-link a {
-      color: var(--accent);
-      text-decoration: none;
-      font-size: 0.9rem;
-      transition: all 0.15s;
-    }
-
-    .back-link a:hover {
-      text-decoration: underline;
-    }
-
-    .info-box {
-      background: rgba(236, 72, 153, 0.05);
-      border: 1px solid rgba(236, 72, 153, 0.2);
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      color: var(--gray-text);
-      margin-top: 16px;
-      line-height: 1.5;
-    }
-
-    .toast {
-      position: fixed;
-      bottom: -80px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.9);
-      border: 1px solid rgba(236, 72, 153, 0.3);
-      color: var(--accent);
-      padding: 14px 20px;
-      border-radius: 10px;
-      z-index: 2000;
-      transition: bottom 0.3s ease;
-      font-weight: 600;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-    }
-
-    .toast.show {
-      bottom: 20px;
-    }
-  </style>
+  <link rel="stylesheet" href="css/admin-dashboard.css">
 </head>
 
 <body>
 
-<div class="login-container">
-  <div class="login-header">
-    <img src="logo.jpeg" alt="Pickle Social" class="login-logo">
-    <h1>Pickle Social <span>Admin</span></h1>
-    <p>Management Dashboard</p>
+<nav>
+  <div class="nav-brand">
+    <a href="https://picklesocialcebu.site" target="_blank" title="Visit Pickle Social">
+      <img src="logo.jpeg" alt="Pickle Social logo" class="nav-logo">
+    </a>
+    Pickle Social <span>Admin Dashboard</span>
   </div>
+  <div class="nav-actions">
+    <button class="btn-secondary" onclick="logout()">Logout</button>
+  </div>
+</nav>
 
-  <div class="error-message" id="errorMessage"></div>
-
-  <form onsubmit="handleLogin(event)">
-    <div class="form-group">
-      <label for="password">Admin Password</label>
-      <input 
-        type="password" 
-        id="password" 
-        placeholder="Enter admin password" 
-        required 
-        autocomplete="off"
-      >
+<main>
+  <div class="container">
+    <!-- Header -->
+    <div class="dashboard-header">
+      <div class="dashboard-title">
+        <h1>Management Dashboard</h1>
+        <p class="dashboard-copy">Search bookings, manage payments, and export report data.</p>
+      </div>
+      <div class="header-controls">
+        <input type="text" id="searchInput" class="filter-input" placeholder="Search reference, name, phone" oninput="applyFilters()">
+        <select id="courtFilter" class="filter-input" onchange="applyFilters()">
+          <option value="">All Courts</option>
+          <option value="Court One">Court One</option>
+          <option value="Court Two">Court Two</option>
+        </select>
+        <input type="date" id="filterFrom" class="filter-input" onchange="applyFilters()">
+        <select id="filterStatus" class="filter-input" onchange="applyFilters()">
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="paid">Paid</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="expired">Expired</option>
+        </select>
+        <button class="btn-secondary" onclick="downloadCsv()">Export CSV</button>
+        <button class="btn-primary" onclick="refreshData()">Refresh</button>
+      </div>
     </div>
 
-    <button type="submit" class="login-btn" id="loginBtn">Login to Dashboard</button>
-  </form>
+    <!-- Earnings Summary Cards -->
+    <div class="earnings-section">
+      <h2>Earnings Overview</h2>
+      <div class="earnings-grid">
+        <div class="earnings-card">
+          <div class="earnings-label">Today's Earnings</div>
+          <div class="earnings-amount" id="todayEarnings">₱0.00</div>
+          <div class="earnings-detail" id="todayCount">0 bookings</div>
+        </div>
+        <div class="earnings-card">
+          <div class="earnings-label">Weekly Earnings</div>
+          <div class="earnings-amount" id="weeklyEarnings">₱0.00</div>
+          <div class="earnings-detail" id="weeklyCount">0 bookings</div>
+        </div>
+        <div class="earnings-card">
+          <div class="earnings-label">Monthly Earnings</div>
+          <div class="earnings-amount" id="monthlyEarnings">₱0.00</div>
+          <div class="earnings-detail" id="monthlyCount">0 bookings</div>
+        </div>
+        <div class="earnings-card accent">
+          <div class="earnings-label">Pending Payments</div>
+          <div class="earnings-amount" id="pendingAmount">₱0.00</div>
+          <div class="earnings-detail" id="pendingCount">0 bookings</div>
+        </div>
+      </div>
+    </div>
 
-  
+    <!-- Bookings Table -->
+    <div class="bookings-section">
+      <div class="bookings-toolbar">
+        <div>
+          <h2>Bookings</h2>
+          <div class="toolbar-copy">Select rows to perform bulk actions: mark paid, cancel, delete.</div>
+        </div>
+        <button class="btn-secondary" onclick="refreshData()">Refresh</button>
+        <div class="bulk-actions" id="bulkActionsBar" style="display:none;">
+          <span id="selectedCount">0 selected</span>
+          <button class="btn-secondary" onclick="bulkMarkPaid()">Mark Paid</button>
+          <button class="btn-secondary" onclick="bulkCancel()">Cancel</button>
+          <button class="btn-secondary delete-btn" onclick="bulkDelete()">Delete</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="bookings-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"></th>
+              <th>Reference</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Court</th>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bookingsTableBody">
+            <tr>
+              <td colspan="11" class="loading-cell">Loading bookings...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-<div class="toast" id="toast"></div>
+    <!-- Pagination -->
+    <div class="pagination">
+      <button class="btn-secondary" id="prevPageBtn" onclick="previousPage()" disabled>Previous</button>
+      <span id="pageInfo">Page 1</span>
+      <button class="btn-secondary" id="nextPageBtn" onclick="nextPage()" disabled>Next</button>
+    </div>
+  </div>
+</main>
 
-<script>
-  // Simple login (in production, use proper authentication!)
-  const ADMIN_PASSWORD = 'admin123'; // Change this!
+<!-- Edit Booking Modal -->
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Booking</h3>
+      <button class="modal-close" onclick="closeEditModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Reference Code</label>
+        <input type="text" id="editRef" readonly>
+      </div>
+      <div class="form-group">
+        <label>Customer Name</label>
+        <input type="text" id="editName" placeholder="Enter customer name">
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="text" id="editPhone" placeholder="Enter phone number">
+      </div>
+        <div class="form-group">
+        <label>Status</label>
+        <select id="editStatus">
+          <option value="pending">Pending</option>
+          <option value="paid">Paid</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="expired">Expired</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Amount (₱)</label>
+        <input type="number" id="editAmount" placeholder="Enter amount">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="editEmail" placeholder="Enter customer email">
+      </div>
 
-  function handleLogin(e) {
-    e.preventDefault();
-    
-    const password = document.getElementById('password').value;
-    const loginBtn = document.getElementById('loginBtn');
-    const errorMessage = document.getElementById('errorMessage');
+      <div class="form-group">
+        <label>Booking Notes</label>
+        <textarea id="editNotes" rows="4" placeholder="Special notes or comments"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveBookingChanges()">Save Changes</button>
+    </div>
+  </div>
+</div>
 
-    if (password === ADMIN_PASSWORD) {
-      // Store session token
-      const token = 'admin_' + Date.now().toString(36);
-      sessionStorage.setItem('adminToken', token);
-      
-      showToast('✅ Login successful! Redirecting...');
-      setTimeout(() => {
-        window.location.href = 'admin-dashboard.html';
-      }, 500);
-    } else {
-      errorMessage.textContent = '❌ Invalid password';
-      errorMessage.classList.add('show');
-      document.getElementById('password').value = '';
-      
-      setTimeout(() => {
-        errorMessage.classList.remove('show');
-      }, 3000);
-    }
-  }
+<!-- Booking Details Modal -->
+<div class="modal" id="bookingDetailsModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Booking Details</h3>
+      <button class="modal-close" onclick="closeBookingDetails()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">Reference</div>
+          <div class="summary-value" id="detailsReference">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Customer</div>
+          <div class="summary-value" id="detailsCustomer">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Phone</div>
+          <div class="summary-value" id="detailsPhone">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total</div>
+          <div class="summary-value" id="detailsTotal">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Status</div>
+          <div class="summary-value" id="detailsStatus">-</div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <h4>Booking items</h4>
+        <div id="bookingDetailsList" class="modal-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeBookingDetails()">Close</button>
+      <button class="btn-primary" onclick="copyBookingDetailsConfirmation()">Copy confirmation</button>
+    </div>
+  </div>
+</div>
 
-  function showToast(message) {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => {
-      toast.classList.remove('show');
-    }, 2000);
-  }
+<!-- Receipt Viewer Modal -->
+<div class="modal" id="receiptViewModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Receipt Details</h3>
+      <button class="modal-close" onclick="closeReceiptViewer()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="receipt-view-grid">
+        <div class="receipt-image-card">
+          <div class="receipt-image-label">Receipt Image</div>
+          <img id="receiptViewImage" alt="Receipt image" class="receipt-image" style="display:none;" />
+          <div id="receiptViewPlaceholder" class="receipt-image-placeholder">No receipt image available for this booking.</div>
+        </div>
+        <div class="receipt-detail-card">
+          <div class="receipt-detail-row"><span>Customer</span><strong id="receiptViewName">-</strong></div>
+          <div class="receipt-detail-row"><span>Reference</span><strong id="receiptViewReference">-</strong></div>
+          <div class="receipt-detail-row"><span>Booking Date</span><strong id="receiptViewDate">-</strong></div>
+          <div class="receipt-detail-row"><span>Booking Time</span><strong id="receiptViewTime">-</strong></div>
+          <div class="receipt-detail-row"><span>Amount</span><strong id="receiptViewAmount">-</strong></div>
+          <div class="receipt-detail-row"><span>Payment Method</span><strong id="receiptViewPayment">-</strong></div>
+          <div class="receipt-detail-row"><span>Transaction ID</span><strong id="receiptViewTransaction">-</strong></div>
+          <div class="receipt-detail-row"><span>Status</span><strong id="receiptViewStatus">-</strong></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeReceiptViewer()">Close</button>
+    </div>
+  </div>
+</div>
 
-  // Check if already logged in
-  if (sessionStorage.getItem('adminToken')) {
-    window.location.href = 'admin-dashboard.html';
-  }
-</script>
+<!-- Booking Confirmation Modal -->
+<div class="modal" id="bookingConfirmationModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Booking Confirmation</h3>
+      <button class="modal-close" onclick="closeBookingConfirmationModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); white-space: pre-wrap; word-wrap: break-word; font-family: 'DM Sans', monospace; font-size: 0.9rem; line-height: 1.6; color: #e5e7eb;" id="confirmationText"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeBookingConfirmationModal()">Close</button>
+      <button class="btn-primary" onclick="copyConfirmationText()">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- Today Summary Modal -->
+<div class="modal" id="todayModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Today's Booking Summary</h3>
+      <button class="modal-close" onclick="closeTodayModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">Date</div>
+          <div class="summary-value" id="todaySummaryDate">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total Bookings</div>
+          <div class="summary-value" id="todaySummaryTotal">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Pending</div>
+          <div class="summary-value" id="todaySummaryPending">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Paid/Completed</div>
+          <div class="summary-value" id="todaySummaryPaid">0</div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <h4>Bookings for Today</h4>
+        <div class="modal-list" id="todayBookingList"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeTodayModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div class="toast" id="toast">Copied to clipboard</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-dashboard.js"></script>
 
 </body>
 </html>
