@@ -715,11 +715,12 @@ function copyBookingDetailsConfirmation() {
   const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
 
   const sortTime = (timeStr) => {
-    const match = timeStr.match(/(\d+):(\d+)\s(AM|PM)/);
+    // Match time at the start: "8PM" or "8:30PM" (handles both HH:MM and HH formats)
+    const match = timeStr.match(/^(\d+)(?::(\d+))?\s*(AM|PM)/i);
     if (!match) return 0;
     let hours = parseInt(match[1]);
-    const minutes = parseInt(match[2]);
-    const meridiem = match[3];
+    const minutes = match[2] ? parseInt(match[2]) : 0;
+    const meridiem = match[3].toUpperCase();
     if (meridiem === 'PM' && hours !== 12) hours += 12;
     if (meridiem === 'AM' && hours === 12) hours = 0;
     return hours * 60 + minutes;
