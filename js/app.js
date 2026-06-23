@@ -899,8 +899,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
       
       let courtSections = '';
-      const courtOrder = ['Court One', 'Court Two'];
-      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+      const courtOrder = ['Court 1', 'Court 2'];
+      const timeEmojis = ['',  '', '', '', '', '', '', '', '', ''];
       let emojiIndex = 0;
       
       sortedDates.forEach(date => {
