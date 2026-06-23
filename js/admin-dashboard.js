@@ -136,10 +136,65 @@ async function loadBookings() {
     selectedBookingIds.clear();
     console.log('Loaded bookings:', allBookings);
     
+    // Check and update expired bookings
+    await updateExpiredBookings(allBookings);
+    
     applyFilters();
   } catch (err) {
     console.error('Error loading bookings:', err);
     showToast('Failed to load bookings');
+  }
+}
+
+// Check if a booking has expired and update status if needed
+async function updateExpiredBookings(bookings) {
+  try {
+    const now = new Date();
+    const expiredIds = [];
+
+    for (const booking of bookings) {
+      // Only check pending bookings
+      if (booking.status !== 'pending') continue;
+
+      const bookingDate = booking.booking_date;
+      const timeSlot = booking.time_slot || booking.booking_time || '';
+
+      if (!bookingDate) continue;
+
+      // Parse booking date and time
+      // Assuming date format is YYYY-MM-DD and time format is HH:MM or HH:MM:SS
+      let bookingDateTime;
+      
+      if (timeSlot) {
+        // Combine date and time
+        bookingDateTime = new Date(`${bookingDate}T${timeSlot}`);
+      } else {
+        // If no time slot, set to end of day
+        bookingDateTime = new Date(bookingDate);
+        bookingDateTime.setHours(23, 59, 59);
+      }
+
+      // Check if booking has passed
+      if (bookingDateTime < now) {
+        expiredIds.push(booking.id);
+      }
+    }
+
+    // Update all expired bookings in database
+    if (expiredIds.length > 0) {
+      const { error } = await supabaseClient
+        .from('bookings')
+        .update({ status: 'expired' })
+        .in('id', expiredIds);
+
+      if (error) {
+        console.error('Error updating expired bookings:', error);
+      } else {
+        console.log(`Updated ${expiredIds.length} bookings to expired status`);
+      }
+    }
+  } catch (err) {
+    console.error('Error checking for expired bookings:', err);
   }
 }
 
@@ -581,18 +636,61 @@ function openBookingDetails(group) {
   group.bookings.forEach((booking, index) => {
     const item = document.createElement('div');
     item.className = 'list-item';
-    item.innerHTML = `
-      <div class="list-item-top">
-        <strong>Booking ${index + 1}</strong>
-        <span class="status-badge ${booking.status || 'pending'}">${booking.status || 'pending'}</span>
-      </div>
-      <div class="list-item-bottom">
-        <span>${booking.court || booking.court_name || 'Court'}</span>
-        <span>${booking.booking_date || 'N/A'}</span>
-        <span>${booking.time_slot || booking.booking_time || 'N/A'}</span>
-        <span>₱${(booking.price || booking.rate || 0).toLocaleString()}</span>
-      </div>
+    
+    const topDiv = document.createElement('div');
+    topDiv.className = 'list-item-top';
+    topDiv.innerHTML = `
+      <strong>Booking ${index + 1}</strong>
+      <span class="status-badge ${booking.status || 'pending'}">${booking.status || 'pending'}</span>
     `;
+    
+    const bottomDiv = document.createElement('div');
+    bottomDiv.className = 'list-item-bottom';
+    bottomDiv.innerHTML = `
+      <span>${booking.court || booking.court_name || 'Court'}</span>
+      <span>${booking.booking_date || 'N/A'}</span>
+      <span>${booking.time_slot || booking.booking_time || 'N/A'}</span>
+      <span>₱${(booking.price || booking.rate || 0).toLocaleString()}</span>
+    `;
+    
+    const actionDiv = document.createElement('div');
+    actionDiv.className = 'list-item-actions';
+    
+    if (booking.status === 'pending') {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'action-btn delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => deleteBooking(booking);
+      actionDiv.appendChild(deleteBtn);
+    } else {
+      const pendingBtn = document.createElement('button');
+      pendingBtn.className = 'action-btn';
+      pendingBtn.textContent = 'Mark Pending';
+      pendingBtn.onclick = async () => {
+        const { error } = await supabaseClient
+          .from('bookings')
+          .update({ status: 'pending' })
+          .eq('id', booking.id);
+        if (error) {
+          showToast('Failed to mark as pending');
+        } else {
+          showToast('Booking marked as pending');
+          await loadBookings();
+          openBookingDetails(group);
+        }
+      };
+      actionDiv.appendChild(pendingBtn);
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'action-btn delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => deleteBooking(booking);
+      actionDiv.appendChild(deleteBtn);
+    }
+    
+    item.appendChild(topDiv);
+    item.appendChild(bottomDiv);
+    item.appendChild(actionDiv);
     list.appendChild(item);
   });
 
@@ -644,20 +742,13 @@ function copyBookingDetailsConfirmation() {
   const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
 
   // Build message with separated dates
-  const timeEmojis = ['', '', '', '', '', '', '', '', '', '', ''];
-  let emojiIndex = 0;
-
   const dateBookingLines = sortedDates.map(date => {
     const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const courtGroups = dateGroups[date];
     
     const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
       times.sort((a, b) => sortTime(a) - sortTime(b));
-      const timesList = times.map(timeSlot => {
-        const emoji = timeEmojis[emojiIndex % timeEmojis.length];
-        emojiIndex++;
-        return `${emoji} ${timeSlot}`;
-      }).join('\n');
+      const timesList = times.map(timeSlot => ` ${timeSlot}`).join('\n');
       return `${courtName}\n${timesList}`;
     }).join('\n\n');
 
@@ -852,11 +943,6 @@ function copyToClipboard(text) {
 
 // Delete booking
 async function deleteBooking(booking) {
-  if (!booking.status || booking.status !== 'pending') {
-    showToast('Only pending bookings can be deleted');
-    return;
-  }
-
   // Confirmation dialog
   const confirmed = confirm(
     `Are you sure you want to delete this booking?\n\n` +
@@ -1051,20 +1137,13 @@ async function confirmBookingViaMessenger(group) {
     const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
 
     // Build message with separated dates
-    const timeEmojis = ['', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕐', '🕑'];
-    let emojiIndex = 0;
-
     const dateBookingLines = sortedDates.map(date => {
       const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
       const courtGroups = dateGroups[date];
       
       const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
         times.sort((a, b) => sortTime(a) - sortTime(b));
-        const timesList = times.map(timeSlot => {
-          const emoji = timeEmojis[emojiIndex % timeEmojis.length];
-          emojiIndex++;
-          return `${emoji} ${timeSlot}`;
-        }).join('\n');
+        const timesList = times.map(timeSlot => ` ${timeSlot}`).join('\n');
         return `${courtName}\n${timesList}`;
       }).join('\n\n');
 

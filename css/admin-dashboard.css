@@ -425,6 +425,12 @@ main {
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+.status-badge.expired {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
 /* Action Buttons in Table */
 .action-buttons {
   display: flex;

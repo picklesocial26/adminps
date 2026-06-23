@@ -899,8 +899,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
       
       let courtSections = '';
-      const courtOrder = ['Court 1', 'Court 2'];
-      const timeEmojis = ['',  '', '', '', '', '', '', '', '', ''];
+      const courtOrder = ['Court One', 'Court Two'];
+      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
       let emojiIndex = 0;
       
       sortedDates.forEach(date => {
@@ -1181,7 +1181,7 @@ Phone: ${firstBooking.phone_number || ''}
         });
       }
 
-      const timeEmojis = ['', '', '', '', '', '', '', '', '', '', ''];
+      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '�', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
       const courtSections = Object.entries(courtGroups).map(([court, times]) => {
         const sortedTimes = times.slice().sort();
         const timesHtml = sortedTimes.map((time, index) => `
