@@ -1181,7 +1181,7 @@ Phone: ${firstBooking.phone_number || ''}
         });
       }
 
-      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '�', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
+      const timeEmojis = ['', '', '', '', '', '', '', '', '', '', ''];
       const courtSections = Object.entries(courtGroups).map(([court, times]) => {
         const sortedTimes = times.slice().sort();
         const timesHtml = sortedTimes.map((time, index) => `
