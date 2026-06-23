@@ -770,6 +770,24 @@ main {
   bottom: 20px;
 }
 
+/* Tablet Size (1280 × 800) */
+@media (min-width: 1280px) {
+  .btn-primary,
+  .btn-secondary {
+    font-size: 1rem;
+    padding: 12px 24px;
+  }
+
+  .header-controls {
+    gap: 16px;
+  }
+
+  .filter-input {
+    padding: 10px 14px;
+    font-size: 1rem;
+  }
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   main {
