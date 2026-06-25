@@ -1,4 +1,4 @@
-﻿// admin-dashboard.js
+// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -1124,7 +1124,7 @@ async function deleteBookingGroup(group) {
   const { error } = await supabaseClient
     .from('bookings')
     .delete()
-    .in('id', pendingIds);
+    .in('id', deletableIds);
 
   if (error) {
     console.error('Bulk delete group error:', error);
