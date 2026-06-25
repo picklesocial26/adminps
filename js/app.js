@@ -1,21 +1,1414 @@
-// app.js — extracted from index.html
-// Global variables
-let selectedSlots = new Set();
+// admin-dashboard.js
 let supabaseClient = null;
-let pendingBookingEntries = [];
-let pendingSlotsWithTimer = {}; // Track pending slots with timestamps
-let receiptFile = null;
-let receiptBookingReference = '';
-let receiptBookingTotal = 0;
-let receiptRefUploaded = false;
-const TEST_MODE_FORCE_ONE_PHP = true; // Force all booking totals to ₱1 for test purposes
+let allBookings = [];
+let filteredBookings = [];
+let groupedBookings = [];
+let currentPage = 1;
+const itemsPerPage = 20;
+let currentEditingBooking = null;
+let selectedBookingIds = new Set();
+let currentBookingDetailsGroup = null;
 
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  if (!toast) {
-    console.warn('Toast element not found:', message);
+function getBookingGroupKey(booking) {
+  if (booking.reference_code) return booking.reference_code;
+  return `${booking.customer_name || 'unknown'}|${booking.phone_number || booking.phone || 'unknown'}|${booking.booking_date || ''}`;
+}
+
+function groupBookings(bookings) {
+  const groups = {};
+
+  bookings.forEach(booking => {
+    const key = getBookingGroupKey(booking);
+    if (!groups[key]) {
+      groups[key] = {
+        key,
+        ids: [],
+        bookings: [],
+        reference_code: booking.reference_code || 'N/A',
+        customer_name: booking.customer_name || 'N/A',
+        phone_number: booking.phone_number || booking.phone || 'N/A',
+        totalAmount: 0,
+        status: booking.status || 'pending',
+        courts: new Set(),
+        dates: new Set(),
+        times: new Set()
+      };
+    }
+
+    const group = groups[key];
+    group.ids.push(booking.id);
+    group.bookings.push(booking);
+    group.totalAmount += (booking.price || booking.rate || 0);
+    group.courts.add(booking.court || booking.court_name || 'N/A');
+    group.dates.add(booking.booking_date || 'N/A');
+    group.times.add(booking.time_slot || booking.booking_time || 'N/A');
+
+    if (group.status !== 'pending') {
+      if (booking.status === 'pending') {
+        group.status = 'pending';
+      } else if (booking.status === 'paid') {
+        group.status = 'paid';
+      }
+    }
+  });
+
+  return Object.values(groups).map(group => {
+    group.courtSummary = group.courts.size === 1 ? Array.from(group.courts)[0] : 'See details';
+    group.dateSummary = group.dates.size === 1 ? Array.from(group.dates)[0] : 'See details';
+    group.timeSummary = group.times.size === 1 ? Array.from(group.times)[0] : 'See details';
+    group.status = group.bookings.some(b => b.status === 'pending') ? 'pending' : group.bookings.some(b => b.status === 'paid') ? 'paid' : group.bookings[0]?.status || 'pending';
+    return group;
+  });
+}
+
+// Check authentication
+function checkAuthentication() {
+  const token = sessionStorage.getItem('adminToken');
+  if (!token) {
+    // Not logged in, redirect to login
+    window.location.href = 'index.html';
+    return false;
+  }
+  return true;
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', async () => {
+  // Check if user is authenticated
+  if (!checkAuthentication()) {
     return;
   }
+  // Initialize Supabase
+  const SUPABASE_URL = "https://nozisfmqzkeywefrqkok.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk";
+
+  try {
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // Test connection
+    const { error } = await supabaseClient.from("bookings").select("id").limit(1);
+    if (error) throw error;
+    
+    showToast('Connected to database');
+    
+    // Set today's date as default range filter (local timezone, no UTC conversion)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+    
+    const dateFrom = document.getElementById('filterFrom');
+    const dateTo = document.getElementById('filterTo');
+    if (dateFrom) dateFrom.value = dateString;
+    if (dateTo) dateTo.value = dateString;
+    
+    // Load initial data
+    await loadBookings();
+    updateEarnings();
+
+    setInterval(async () => {
+      if (!supabaseClient || allBookings.length === 0) return;
+      const expiredUpdated = await updateExpiredBookings(allBookings);
+      if (expiredUpdated) {
+        await loadBookings();
+      }
+    }, 60000);
+  } catch (err) {
+    console.error('Initialization error:', err);
+    showToast('Failed to connect to database');
+  }
+});
+
+// Load all bookings from Supabase
+async function loadBookings() {
+  if (!supabaseClient) {
+    showToast('Database not connected');
+    return;
+  }
+
+  try {
+    // Show loading state
+    const tbody = document.getElementById('bookingsTableBody');
+    tbody.innerHTML = '<tr><td colspan="11" class="loading-cell">Loading bookings...</td></tr>';
+
+    // Fetch all bookings
+    const { data, error } = await supabaseClient
+      .from('bookings')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    allBookings = data || [];
+    selectedBookingIds.clear();
+    console.log('Loaded bookings:', allBookings);
+    
+    // Check and update expired bookings
+    const expiredUpdated = await updateExpiredBookings(allBookings);
+    if (expiredUpdated) {
+      await loadBookings();
+      return;
+    }
+    
+    applyFilters();
+  } catch (err) {
+    console.error('Error loading bookings:', err);
+    showToast('Failed to load bookings');
+  }
+}
+
+// Check if a booking has expired and update status if needed
+async function updateExpiredBookings(bookings) {
+  try {
+    const now = new Date();
+    const expiredIds = [];
+
+    for (const booking of bookings) {
+      // Only check pending bookings
+      if (booking.status !== 'pending') continue;
+
+      let shouldExpire = false;
+
+      if (booking.created_at) {
+        const createdAt = new Date(booking.created_at);
+        if (!isNaN(createdAt.getTime())) {
+          const pendingTimeout = 30 * 60 * 1000; // 30 minutes
+          if (now - createdAt >= pendingTimeout) {
+            shouldExpire = true;
+          }
+        }
+      }
+
+      if (!shouldExpire) {
+        const bookingDate = booking.booking_date;
+        const timeSlot = booking.time_slot || booking.booking_time || '';
+
+        if (!bookingDate) continue;
+
+        // Parse booking date and time
+        // Assuming date format is YYYY-MM-DD and time format is HH:MM or HH:MM:SS
+        let bookingDateTime;
+        
+        if (timeSlot) {
+          // Combine date and time
+          bookingDateTime = new Date(`${bookingDate}T${timeSlot}`);
+        } else {
+          // If no time slot, set to end of day
+          bookingDateTime = new Date(bookingDate);
+          bookingDateTime.setHours(23, 59, 59);
+        }
+
+        // Expire a pending booking if its target time has passed
+        if (bookingDateTime < now) {
+          shouldExpire = true;
+        }
+      }
+
+      if (shouldExpire) {
+        expiredIds.push(booking.id);
+      }
+    }
+
+    // Update all expired bookings in database
+    if (expiredIds.length > 0) {
+      const { error } = await supabaseClient
+        .from('bookings')
+        .update({ status: 'expired' })
+        .in('id', expiredIds);
+
+      if (error) {
+        console.error('Error updating expired bookings:', error);
+      } else {
+        console.log(`Updated ${expiredIds.length} bookings to expired status`);
+        return true;
+      }
+    }
+  } catch (err) {
+    console.error('Error checking for expired bookings:', err);
+  }
+  return false;
+}
+
+// Apply filters and render table
+function applyFilters() {
+  const searchInput = document.getElementById('searchInput');
+  const courtFilterInput = document.getElementById('courtFilter');
+  const statusFilterInput = document.getElementById('filterStatus');
+  const dateFromInput = document.getElementById('filterFrom');
+  const dateToInput = document.getElementById('filterTo');
+
+  const searchTerm = (searchInput?.value || '').trim().toLowerCase();
+  const courtFilter = courtFilterInput?.value || '';
+  const statusFilter = statusFilterInput?.value || '';
+  const dateFrom = dateFromInput?.value || '';
+  const dateTo = dateToInput?.value || '';
+
+  filteredBookings = allBookings.filter(booking => {
+    let matches = true;
+    const searchValue = [booking.reference_code, booking.customer_name, booking.phone_number, booking.customer_email, booking.booking_date, booking.court, booking.court_name]
+      .filter(Boolean)
+      .join(' ').toLowerCase();
+
+    if (searchTerm) {
+      matches = matches && searchValue.includes(searchTerm);
+    }
+
+    if (courtFilter) {
+      const courtName = booking.court || booking.court_name || '';
+      matches = matches && courtName === courtFilter;
+    }
+
+    if (statusFilter) {
+      matches = matches && booking.status === statusFilter;
+    }
+
+    if (dateFrom) {
+      matches = matches && booking.booking_date >= dateFrom;
+    }
+
+    if (dateTo) {
+      matches = matches && booking.booking_date <= dateTo;
+    }
+
+    return matches;
+  });
+
+  currentPage = 1;
+  groupedBookings = groupBookings(filteredBookings);
+  renderTable();
+  updatePagination();
+  updateEarnings();
+}
+
+// Render table with pagination
+function renderTable() {
+  const tbody = document.getElementById('bookingsTableBody');
+  tbody.innerHTML = '';
+
+  if (groupedBookings.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" class="loading-cell">No bookings found</td></tr>';
+    return;
+  }
+
+  const start = (currentPage - 1) * itemsPerPage;
+  const end = start + itemsPerPage;
+  const pageBookings = groupedBookings.slice(start, end);
+
+  pageBookings.forEach(group => {
+    const row = document.createElement('tr');
+
+    const selectCell = document.createElement('td');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = group.ids.every(id => selectedBookingIds.has(id));
+    checkbox.onchange = () => toggleGroupSelection(group);
+    checkbox.className = 'row-checkbox';
+    selectCell.appendChild(checkbox);
+
+    const refCell = createCell(group.reference_code || 'N/A');
+    const nameCell = createCell(group.customer_name || 'N/A');
+    const phoneCell = createCell(formatPhone(group.phone_number || 'N/A'));
+    const courtCell = createCell(group.courtSummary || 'Multiple');
+    const dateCell = createCell(group.dateSummary || 'Multiple');
+    const timeCell = createCell(group.timeSummary || 'Multiple');
+
+    const amountCell = document.createElement('td');
+    amountCell.textContent = '₱' + group.totalAmount.toLocaleString();
+
+    const statusCell = document.createElement('td');
+    const statusBadge = document.createElement('span');
+    statusBadge.className = `status-badge ${group.status || 'pending'}`;
+    statusBadge.textContent = group.status || 'pending';
+    statusCell.appendChild(statusBadge);
+
+    const actionCell = document.createElement('td');
+    actionCell.className = 'action-buttons';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'action-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.onclick = () => openEditModal(group.bookings[0]);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'action-btn';
+    copyBtn.textContent = 'Copy Ref';
+    copyBtn.onclick = () => copyToClipboard(group.reference_code);
+
+    const detailsBtn = document.createElement('button');
+    detailsBtn.className = 'action-btn';
+    detailsBtn.textContent = 'Details';
+    detailsBtn.onclick = () => openBookingDetails(group);
+
+    actionCell.appendChild(editBtn);
+    actionCell.appendChild(copyBtn);
+    actionCell.appendChild(detailsBtn);
+    if (group.status === 'pending' || group.status === 'expired') {
+      if (group.status === 'pending') {
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'action-btn confirm-btn';
+        confirmBtn.textContent = 'Confirm';
+        confirmBtn.title = 'Confirm booking and send Messenger notification';
+        confirmBtn.onclick = () => confirmBookingViaMessenger(group);
+        actionCell.appendChild(confirmBtn);
+      }
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'action-btn delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.title = group.status === 'pending'
+        ? 'Delete this pending booking group'
+        : 'Delete this expired booking group';
+      deleteBtn.onclick = () => deleteBookingGroup(group);
+      actionCell.appendChild(deleteBtn);
+    }
+
+    row.appendChild(selectCell);
+    row.appendChild(refCell);
+    row.appendChild(nameCell);
+    row.appendChild(phoneCell);
+    row.appendChild(courtCell);
+    row.appendChild(dateCell);
+    row.appendChild(timeCell);
+    row.appendChild(amountCell);
+    row.appendChild(statusCell);
+    row.appendChild(actionCell);
+
+    tbody.appendChild(row);
+  });
+
+  updateBulkActions();
+}
+
+function toggleGroupSelection(group) {
+  const allSelected = group.ids.every(id => selectedBookingIds.has(id));
+  group.ids.forEach(id => {
+    if (allSelected) {
+      selectedBookingIds.delete(id);
+    } else {
+      selectedBookingIds.add(id);
+    }
+  });
+  updateBulkActions();
+  renderTable();
+}
+
+function createCell(text) {
+  const cell = document.createElement('td');
+  cell.textContent = text;
+  return cell;
+}
+
+function toggleSelectAll(element) {
+  if (element.checked) {
+    groupedBookings.forEach(group => group.ids.forEach(id => selectedBookingIds.add(id)));
+  } else {
+    selectedBookingIds.clear();
+  }
+  renderTable();
+}
+
+function toggleRowSelection(bookingId) {
+  if (selectedBookingIds.has(bookingId)) {
+    selectedBookingIds.delete(bookingId);
+  } else {
+    selectedBookingIds.add(bookingId);
+  }
+  updateBulkActions();
+}
+
+function updateBulkActions() {
+  const bulkBar = document.getElementById('bulkActionsBar');
+  const selectedCount = document.getElementById('selectedCount');
+  const count = selectedBookingIds.size;
+  selectedCount.textContent = `${count} selected`;
+  bulkBar.style.display = count > 0 ? 'flex' : 'none';
+  document.getElementById('selectAllCheckbox').checked = count > 0 && filteredBookings.every(b => selectedBookingIds.has(b.id));
+}
+
+function getSelectedBookings() {
+  return allBookings.filter(booking => selectedBookingIds.has(booking.id));
+}
+
+async function bulkMarkPaid() {
+  const selected = getSelectedBookings();
+  if (selected.length === 0) {
+    showToast('No bookings selected');
+    return;
+  }
+
+  const confirmed = confirm(`Mark ${selected.length} booking(s) as paid?`);
+  if (!confirmed) return;
+
+  const ids = selected.map(b => b.id);
+  const { error } = await supabaseClient
+    .from('bookings')
+    .update({ status: 'paid' })
+    .in('id', ids);
+
+  if (error) {
+    console.error('Bulk mark paid error:', error);
+    showToast('Failed to mark paid');
+    return;
+  }
+
+  showToast('Bookings marked paid');
+  selectedBookingIds.clear();
+  await loadBookings();
+}
+
+async function bulkMarkUnpaid() {
+  const selected = getSelectedBookings();
+  if (selected.length === 0) {
+    showToast('No bookings selected');
+    return;
+  }
+
+  const confirmed = confirm(`Mark ${selected.length} booking(s) as unpaid?`);
+  if (!confirmed) return;
+
+  const ids = selected.map(b => b.id);
+  const { error } = await supabaseClient
+    .from('bookings')
+    .update({ status: 'unpaid' })
+    .in('id', ids);
+
+  if (error) {
+    console.error('Bulk mark unpaid error:', error);
+    showToast('Failed to mark unpaid');
+    return;
+  }
+
+  showToast('Bookings marked unpaid');
+  selectedBookingIds.clear();
+  await loadBookings();
+}
+
+async function bulkCancel() {
+  const selected = getSelectedBookings();
+  if (selected.length === 0) {
+    showToast('No bookings selected');
+    return;
+  }
+
+  const confirmed = confirm(`Cancel ${selected.length} booking(s)?`);
+  if (!confirmed) return;
+
+  const ids = selected.map(b => b.id);
+  const { error } = await supabaseClient
+    .from('bookings')
+    .update({ status: 'cancelled' })
+    .in('id', ids);
+
+  if (error) {
+    console.error('Bulk cancel error:', error);
+    showToast('Failed to cancel');
+    return;
+  }
+
+  showToast('Bookings cancelled');
+  selectedBookingIds.clear();
+  await loadBookings();
+}
+
+async function bulkDelete() {
+  const selected = getSelectedBookings();
+  if (selected.length === 0) {
+    showToast(' No bookings selected for delete');
+    return;
+  }
+
+  const confirmed = confirm(`Delete ${selected.length} booking(s)? This cannot be undone.`);
+  if (!confirmed) return;
+
+  const ids = selected.map(b => b.id);
+  const { error } = await supabaseClient
+    .from('bookings')
+    .delete()
+    .in('id', ids);
+
+  if (error) {
+    console.error('Bulk delete error:', error);
+    showToast('Failed to delete selected bookings');
+    return;
+  }
+
+  showToast('Selected bookings deleted');
+  selectedBookingIds.clear();
+  await loadBookings();
+}
+
+function downloadCsv() {
+  if (filteredBookings.length === 0) {
+    showToast('No bookings to export');
+    return;
+  }
+
+  const rows = [
+    ['Reference', 'Name', 'Phone', 'Email', 'Court', 'Date', 'Time', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Notes']
+  ];
+
+  filteredBookings.forEach(b => {
+    rows.push([
+      b.reference_code || '',
+      b.customer_name || '',
+      b.phone_number || '',
+      b.customer_email || b.email || '',
+      b.court || b.court_name || '',
+      b.booking_date || '',
+      b.time_slot || b.booking_time || '',
+      b.price || b.rate || 0,
+      b.payment_method || '',
+      b.transaction_id || b.transaction || '',
+      b.status || '',
+      b.notes || ''
+    ]);
+  });
+
+  const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `bookings_export_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('Export ready');
+}
+
+// Format phone number
+function formatPhone(phone) {
+  if (!phone) return 'N/A';
+  // Remove non-digits
+  const digits = phone.replace(/\D/g, '');
+  // Format as +63 XXX XXX XXXX or show last 10 digits
+  if (digits.length >= 10) {
+    const last10 = digits.slice(-10);
+    return `+63 ${last10.substring(0, 3)} ${last10.substring(3, 6)} ${last10.substring(6)}`;
+  }
+  return phone;
+}
+
+// Update earnings cards
+function updateEarnings() {
+  // Use the earnings modal date if set, otherwise fallback to the filter date or today
+  const earningsDateInput = document.getElementById('earningsDate');
+  const dateFromInput = document.getElementById('filterFrom');
+  let selectedDate;
+  
+  if (earningsDateInput?.value) {
+    selectedDate = new Date(earningsDateInput.value);
+  } else if (dateFromInput?.value) {
+    selectedDate = new Date(dateFromInput.value);
+  } else {
+    selectedDate = new Date();
+  }
+
+  // Helper function to normalize date comparison
+  const normalizeDate = (dateStr) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  };
+
+  const selectedDateNormalized = normalizeDate(formatDateKey(selectedDate));
+
+  // Calculate the week range (Sunday to Saturday)
+  const dayOfWeek = selectedDate.getDay();
+  const weekStart = new Date(selectedDate);
+  weekStart.setDate(selectedDate.getDate() - dayOfWeek); // Start from Sunday
+  
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6); // End on Saturday
+
+  // Calculate the month range (1st to last day)
+  const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+  const monthEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+
+  // Use all bookings for earnings overview
+  const bookingsToUse = allBookings;
+
+  // Today's earnings - bookings on the selected date only
+  const todayBookings = bookingsToUse.filter(b => {
+    const bDate = normalizeDate(b.booking_date);
+    return bDate && bDate.getTime() === selectedDateNormalized.getTime() && b.status !== 'cancelled' && b.status !== 'unpaid';
+  });
+  const todayEarnings = todayBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
+
+  // Weekly earnings - Sunday to Saturday of the selected week
+  const weeklyBookings = bookingsToUse.filter(b => {
+    const bDate = normalizeDate(b.booking_date);
+    return bDate && bDate >= weekStart && bDate <= weekEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
+  });
+  const weeklyEarnings = weeklyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
+
+  // Monthly earnings - all bookings in the month
+  const monthlyBookings = bookingsToUse.filter(b => {
+    const bDate = normalizeDate(b.booking_date);
+    return bDate && bDate >= monthStart && bDate <= monthEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
+  });
+  const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
+
+  // Pending payments from all bookings
+  const pendingBookings = bookingsToUse.filter(b => b.status === 'pending');
+  const pendingAmount = pendingBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
+
+  // Update UI
+  document.getElementById('todayEarnings').textContent = '₱' + todayEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('todayCount').textContent = `${todayBookings.length} booking${todayBookings.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('weeklyEarnings').textContent = '₱' + weeklyEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('weeklyCount').textContent = `${weeklyBookings.length} booking${weeklyBookings.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('monthlyEarnings').textContent = '₱' + monthlyEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('monthlyCount').textContent = `${monthlyBookings.length} booking${monthlyBookings.length !== 1 ? 's' : ''}`;
+
+  console.log('Earnings updated:', { todayEarnings, weeklyEarnings, monthlyEarnings, selectedDate: formatDateKey(selectedDate), weekStart: formatDateKey(weekStart), weekEnd: formatDateKey(weekEnd), monthStart: formatDateKey(monthStart), monthEnd: formatDateKey(monthEnd) });
+}
+
+const earningsModalPassword = 'picklesocial26';
+
+function openEarningsModalWithPassword() {
+  const modal = document.getElementById('earningsPasswordModal');
+  const input = document.getElementById('earningsPasswordInput');
+  if (!modal || !input) {
+    openEarningsModal();
+    return;
+  }
+
+  input.value = '';
+  modal.classList.add('open');
+  setTimeout(() => input.focus(), 120);
+}
+
+function closeEarningsPasswordModal() {
+  const modal = document.getElementById('earningsPasswordModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function submitEarningsPassword() {
+  const input = document.getElementById('earningsPasswordInput');
+  if (!input) return false;
+
+  if (input.value.trim() === earningsModalPassword) {
+    closeEarningsPasswordModal();
+    openEarningsModal();
+  } else {
+    showToast('Incorrect password');
+    input.value = '';
+    input.focus();
+  }
+
+  return false;
+}
+
+function openEarningsModal() {
+  const earningsDateInput = document.getElementById('earningsDate');
+  if (earningsDateInput && !earningsDateInput.value) {
+    earningsDateInput.value = formatDateKey(new Date());
+  }
+  updateEarnings();
+  document.getElementById('earningsModal').classList.add('open');
+}
+
+function closeEarningsModal() {
+  document.getElementById('earningsModal').classList.remove('open');
+}
+
+function setEarningsDateToToday() {
+  const earningsDateInput = document.getElementById('earningsDate');
+  if (!earningsDateInput) return;
+  earningsDateInput.value = formatDateKey(new Date());
+  updateEarnings();
+}
+
+// Format date to YYYY-MM-DD
+function formatDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Pagination
+function updatePagination() {
+  const totalPages = Math.ceil(groupedBookings.length / itemsPerPage);
+  const pageInfo = document.getElementById('pageInfo');
+  const prevBtn = document.getElementById('prevPageBtn');
+  const nextBtn = document.getElementById('nextPageBtn');
+
+  pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+  prevBtn.disabled = currentPage === 1;
+  nextBtn.disabled = currentPage >= totalPages;
+}
+
+function openBookingDetails(group) {
+  document.getElementById('detailsReference').textContent = group.reference_code || 'N/A';
+  document.getElementById('detailsCustomer').textContent = group.customer_name || 'N/A';
+  document.getElementById('detailsPhone').textContent = formatPhone(group.phone_number || 'N/A');
+  document.getElementById('detailsTotal').textContent = '₱' + group.totalAmount.toLocaleString();
+  document.getElementById('detailsStatus').textContent = group.status || 'pending';
+
+  const list = document.getElementById('bookingDetailsList');
+  list.innerHTML = '';
+  group.bookings.forEach((booking, index) => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    
+    const topDiv = document.createElement('div');
+    topDiv.className = 'list-item-top';
+    topDiv.innerHTML = `
+      <strong>Booking ${index + 1}</strong>
+      <span class="status-badge ${booking.status || 'pending'}">${booking.status || 'pending'}</span>
+    `;
+    
+    const bottomDiv = document.createElement('div');
+    bottomDiv.className = 'list-item-bottom';
+    bottomDiv.innerHTML = `
+      <span>${booking.court || booking.court_name || 'Court'}</span>
+      <span>${booking.booking_date || 'N/A'}</span>
+      <span>${booking.time_slot || booking.booking_time || 'N/A'}</span>
+      <span>₱${(booking.price || booking.rate || 0).toLocaleString()}</span>
+    `;
+    
+    const actionDiv = document.createElement('div');
+    actionDiv.className = 'list-item-actions';
+    
+    if (booking.status === 'pending') {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'action-btn delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => deleteBooking(booking);
+      actionDiv.appendChild(deleteBtn);
+    } else {
+      const pendingBtn = document.createElement('button');
+      pendingBtn.className = 'action-btn';
+      pendingBtn.textContent = 'Mark Pending';
+      pendingBtn.onclick = async () => {
+        const { error } = await supabaseClient
+          .from('bookings')
+          .update({ status: 'pending' })
+          .eq('id', booking.id);
+        if (error) {
+          showToast('Failed to mark as pending');
+        } else {
+          showToast('Booking marked as pending');
+          await loadBookings();
+          openBookingDetails(group);
+        }
+      };
+      actionDiv.appendChild(pendingBtn);
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'action-btn delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => deleteBooking(booking);
+      actionDiv.appendChild(deleteBtn);
+    }
+    
+    item.appendChild(topDiv);
+    item.appendChild(bottomDiv);
+    item.appendChild(actionDiv);
+    list.appendChild(item);
+  });
+
+  currentBookingDetailsGroup = group;
+  document.getElementById('bookingDetailsModal').classList.add('open');
+}
+
+function closeBookingDetails() {
+  document.getElementById('bookingDetailsModal').classList.remove('open');
+  currentBookingDetailsGroup = null;
+}
+
+function copyBookingDetailsConfirmation() {
+  const group = currentBookingDetailsGroup;
+  if (!group) {
+    showToast('No booking details available to copy');
+    return;
+  }
+
+  const customerName = group.customer_name || 'N/A';
+  const bookingReference = group.reference_code || 'N/A';
+  const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
+
+  const sortTime = (timeStr) => {
+    // Match time at the start: "8PM" or "8:30PM" (handles both HH:MM and HH formats)
+    const match = timeStr.match(/^(\d+)(?::(\d+))?\s*(AM|PM)/i);
+    if (!match) return 0;
+    let hours = parseInt(match[1]);
+    const minutes = match[2] ? parseInt(match[2]) : 0;
+    const meridiem = match[3].toUpperCase();
+    if (meridiem === 'PM' && hours !== 12) hours += 12;
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+
+  // Group bookings by date
+  const dateGroups = (group.bookings || []).reduce((acc, booking) => {
+    const date = booking.booking_date || 'N/A';
+    const courtName = booking.court || booking.court_name || 'N/A';
+    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+    
+    if (!acc[date]) acc[date] = {};
+    if (!acc[date][courtName]) acc[date][courtName] = [];
+    if (!acc[date][courtName].includes(timeSlot)) acc[date][courtName].push(timeSlot);
+    
+    return acc;
+  }, {});
+
+  // Sort dates
+  const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
+
+  // Build message with separated dates
+  const dateBookingLines = sortedDates.map(date => {
+    const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const courtGroups = dateGroups[date];
+    
+    const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
+      times.sort((a, b) => sortTime(a) - sortTime(b));
+      const timesList = times.map(timeSlot => ` ${timeSlot}`).join('\n');
+      return `${courtName}\n${timesList}`;
+    }).join('\n\n');
+
+    return `📅 ${formattedDate}\n${courtLines}`;
+  }).join('\n\n');
+
+  const message = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n\n${dateBookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(message).then(() => {
+      showToast('Booking confirmation copied');
+    }).catch(() => {
+      prompt('Copy the text below for Messenger:', message);
+    });
+  } else {
+    prompt('Copy the text below for Messenger:', message);
+  }
+}function previousPage() {
+  if (currentPage > 1) {
+    currentPage--;
+    renderTable();
+    updatePagination();
+  }
+}
+
+function nextPage() {
+  const totalPages = Math.ceil(filteredBookings.length / itemsPerPage);
+  if (currentPage < totalPages) {
+    currentPage++;
+    renderTable();
+    updatePagination();
+  }
+}
+
+// Refresh data
+async function refreshData() {
+  await loadBookings();
+}
+
+// Edit Modal
+function openEditModal(booking) {
+  currentEditingBooking = booking;
+  document.getElementById('editRef').value = booking.reference_code || '';
+  document.getElementById('editName').value = booking.customer_name || '';
+  document.getElementById('editPhone').value = booking.phone_number || '';
+  document.getElementById('editEmail').value = booking.customer_email || booking.email || '';
+  document.getElementById('editStatus').value = booking.status || 'pending';
+  document.getElementById('editAmount').value = booking.price || booking.rate || '';
+  document.getElementById('editNotes').value = booking.notes || '';
+  
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('open');
+  currentEditingBooking = null;
+}
+
+function getReceiptImageUrl(booking) {
+  return booking.receipt_url || booking.receipt_url_full || booking.receiptImageUrl || booking.receipt_image || booking.receipt_image_url || booking.receipt || null;
+}
+
+function openReceiptViewer(booking) {
+  const imageUrl = getReceiptImageUrl(booking);
+  const imageEl = document.getElementById('receiptViewImage');
+  const placeholderEl = document.getElementById('receiptViewPlaceholder');
+
+  if (imageEl && placeholderEl) {
+    if (imageUrl) {
+      imageEl.src = imageUrl;
+      imageEl.style.display = 'block';
+      placeholderEl.style.display = 'none';
+    } else {
+      imageEl.src = '';
+      imageEl.style.display = 'none';
+      placeholderEl.style.display = 'block';
+    }
+  }
+
+  document.getElementById('receiptViewName').textContent = booking.customer_name || booking.name || 'Unknown';
+  document.getElementById('receiptViewReference').textContent = booking.reference_code || booking.reference || 'N/A';
+  document.getElementById('receiptViewDate').textContent = booking.booking_date || booking.date || 'N/A';
+  document.getElementById('receiptViewTime').textContent = booking.time_slot || booking.booking_time || 'N/A';
+  document.getElementById('receiptViewAmount').textContent = '₱' + ((booking.price || booking.rate || 0).toLocaleString());
+  document.getElementById('receiptViewPayment').textContent = booking.payment_method || booking.paymentMethod || 'Unknown';
+  document.getElementById('receiptViewTransaction').textContent = booking.transaction_id || booking.transaction || 'N/A';
+  document.getElementById('receiptViewStatus').textContent = booking.status || 'pending';
+
+  document.getElementById('receiptViewModal').classList.add('open');
+}
+
+function closeReceiptViewer() {
+  document.getElementById('receiptViewModal').classList.remove('open');
+}
+
+async function saveBookingChanges() {
+  if (!currentEditingBooking || !supabaseClient) {
+    showToast('Error: booking not selected');
+    return;
+  }
+
+  const name = document.getElementById('editName').value.trim();
+  const phone = document.getElementById('editPhone').value.trim();
+  const email = document.getElementById('editEmail').value.trim();
+  const status = document.getElementById('editStatus').value;
+  const amount = parseFloat(document.getElementById('editAmount').value) || 0;
+  const notes = document.getElementById('editNotes').value.trim();
+
+  if (!name || !phone) {
+    showToast('âš ï¸ Please fill in all required fields');
+    return;
+  }
+
+  try {
+    console.log('=== UPDATING BOOKING ===');
+    console.log('Booking ID:', currentEditingBooking.id);
+    console.log('Customer Name:', name);
+    console.log('Phone:', phone);
+
+    const updateData = {
+      customer_name: name,
+      phone_number: phone,
+      customer_email: email,
+      status: status,
+      price: amount,
+      notes: notes
+    };
+
+    console.log('Update data:', JSON.stringify(updateData, null, 2));
+
+    const { data, error, status: responseStatus, statusText } = await supabaseClient
+      .from('bookings')
+      .update(updateData)
+      .eq('id', currentEditingBooking.id);
+
+    console.log('Update response:', { data, error, status: responseStatus, statusText });
+
+    if (error) {
+      console.error('âŒ Update error:', error);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error details:', error.details);
+      console.error('Error hint:', error.hint);
+      
+      // Show detailed error to user
+      let errorMsg = error.message || 'Unknown error';
+      if (error.details) errorMsg += '\n\nDetails: ' + error.details;
+      if (error.hint) errorMsg += '\n\nHint: ' + error.hint;
+      
+      alert('Error updating booking:\n\n' + errorMsg + '\n\nCheck browser console (F12) for more details.');
+      
+      // Check if it's an RLS policy error
+      if (error.code === 'PGRST301' || error.message.includes('policy')) {
+        alert(
+          'RLS Policy Error: Your Supabase database has Row Level Security policies that prevent updates.\n\n' +
+          'To fix this:\n' +
+          '1. Go to Supabase Dashboard\n' +
+          '2. Select your database\n' +
+          '3. Go to "Bookings" table\n' +
+          '4. Click "Auth" menu\n' +
+          '5. Check if RLS is enabled\n' +
+          '6. Add an update policy or disable RLS for testing\n\n' +
+          'Error: ' + error.message
+        );
+        return;
+      }
+      
+      return;
+    }
+
+    console.log('Booking updated successfully');
+    showToast('Booking updated successfully');
+    closeEditModal();
+    await loadBookings();
+  } catch (err) {
+    console.error('âŒ Exception during update:', err);
+    console.error('Error stack:', err.stack);
+    showToast('Failed to save booking');
+  }
+}
+
+// Copy to clipboard
+function copyToClipboard(text) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Copied to clipboard');
+  }).catch(() => {
+    showToast(' Failed to copy');
+  });
+}
+
+// Delete booking
+async function deleteBooking(booking) {
+  // Confirmation dialog
+  const confirmed = confirm(
+    `Are you sure you want to delete this booking?\n\n` +
+    `Reference: ${booking.reference_code}\n` +
+    `Customer: ${booking.customer_name}\n` +
+    `Date: ${booking.booking_date}\n\n` +
+    `This action cannot be undone.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  if (!supabaseClient) {
+    showToast('Database not connected');
+    return;
+  }
+
+  try {
+    console.log('=== DELETING BOOKING ===');
+    console.log('Booking ID:', booking.id);
+    console.log('Booking Reference:', booking.reference_code);
+    console.log('Booking Status:', booking.status);
+
+    // Try deleting by ID first
+    const { data, error, status, statusText } = await supabaseClient
+      .from('bookings')
+      .delete()
+      .eq('id', booking.id);
+
+    console.log('Delete response:', { data, error, status, statusText });
+
+    if (error) {
+      console.error('âŒ Delete error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error details:', error.details);
+      console.error('Error hint:', error.hint);
+      
+      // Check if it's an RLS policy error
+      if (error.code === 'PGRST301' || error.message.includes('policy')) {
+        alert(
+          'RLS Policy Error: Your Supabase database has Row Level Security policies that prevent deletion.\n\n' +
+          'To fix this:\n' +
+          '1. Go to Supabase Dashboard\n' +
+          '2. Select your database\n' +
+          '3. Go to "Bookings" table\n' +
+          '4. Click "Auth" menu\n' +
+          '5. Check if RLS is enabled\n' +
+          '6. Add a delete policy or disable RLS for testing\n\n' +
+          'Error: ' + error.message
+        );
+        return;
+      }
+      
+      throw error;
+    }
+
+    console.log('Booking deleted from database');
+    showToast('Booking deleted successfully');
+    
+    // Remove from local array and refresh UI immediately
+    allBookings = allBookings.filter(b => b.id !== booking.id);
+    applyFilters();
+    updateEarnings();
+    
+  } catch (err) {
+    console.error('âŒ Exception during delete:', err);
+    console.error('Error stack:', err.stack);
+    showToast('Failed to delete booking');
+  }
+}
+
+async function deleteBookingGroup(group) {
+  const deletableIds = group.bookings.filter(b => ['pending', 'expired'].includes(b.status)).map(b => b.id);
+  if (deletableIds.length === 0) {
+    showToast('No pending or expired bookings in this group to delete');
+    return;
+  }
+
+  const confirmed = confirm(
+    `Are you sure you want to delete ${deletableIds.length} pending/expired booking(s) for ${group.customer_name} (${group.reference_code})? This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  const { error } = await supabaseClient
+    .from('bookings')
+    .delete()
+    .in('id', deletableIds);
+
+  if (error) {
+    console.error('Bulk delete group error:', error);
+    showToast('Failed to delete bookings');
+    return;
+  }
+
+  showToast('Booking group deleted successfully');
+  selectedBookingIds.clear();
+  await loadBookings();
+}
+
+// Payment confirmation functions removed - now handled via Messenger automation
+// Use the /api/confirm-booking endpoint to confirm bookings and send Messenger notifications
+
+function copyBookingConfirmationText(group) {
+  const customerName = group.customer_name || 'N/A';
+  const bookingReference = group.reference_code || 'N/A';
+  const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
+  const dates = Array.from(group.dates || new Set());
+  const formattedDates = dates.length
+    ? dates.map(d => {
+        const parsed = new Date(d);
+        if (isNaN(parsed)) return d;
+        return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      }).join(', ')
+    : 'N/A';
+
+  const courtGroups = (group.bookings || []).reduce((acc, booking) => {
+    const courtName = booking.court || booking.court_name || 'N/A';
+    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+    if (!acc[courtName]) acc[courtName] = [];
+    if (!acc[courtName].includes(timeSlot)) acc[courtName].push(timeSlot);
+    return acc;
+  }, {});
+
+  const timeIcons = ['ðŸ•š', 'ðŸ•›', 'ðŸ•', 'ðŸ•‘', 'ðŸ•’', 'ðŸ•“', 'ðŸ•”', 'ðŸ••', 'ðŸ•–', 'ðŸ•—', 'ðŸ•˜', 'ðŸ•™'];
+  const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
+    const timeLines = times.map((timeSlot, index) => `${timeIcons[index] || 'ðŸ•š'} ${timeSlot}`).join('\n');
+    return `ðŸŸï¸ ${courtName}\n${timeLines}`;
+  }).join('\n\n');
+
+  const message =
+    `BOOKING CONFIRMATION\n\n` +
+    `Hello ${customerName},\n\n` +
+    `Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. âœ…\n\n` +
+    `ðŸ“Œ Booking Reference: ${bookingReference}\n` +
+    `ðŸ’³ Total Paid: ${totalPaid}\n` +
+    `ðŸ“… Date: ${formattedDates}\n\n` +
+    `${bookingLines ? bookingLines + '\n\n' : ''}` +
+    `Thank you for booking with us! Your reservation has been successfully confirmed.`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(message).catch(() => {
+      prompt('Copy the text below for Messenger:', message);
+    });
+  } else {
+    prompt('Copy the text below for Messenger:', message);
+  }
+}
+
+// Confirm payment - now handled via Messenger automation through /api/confirm-booking
+// This function has been removed as bookings are now confirmed via direct Messenger API
+
+// Confirm booking - shows booking info in modal with copy button and updates status
+async function confirmBookingViaMessenger(group) {
+  const referenceCode = group.reference_code;
+  if (!referenceCode) {
+    showToast('No reference code found');
+    return;
+  }
+
+  try {
+    const customerName = group.customer_name || 'N/A';
+    const bookingReference = group.reference_code || 'N/A';
+    const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
+
+    const sortTime = (timeStr) => {
+      // Match time at the start: "8PM" or "8:30PM" (handles both HH:MM and HH formats)
+      const match = timeStr.match(/^(\d+)(?::(\d+))?\s*(AM|PM)/i);
+      if (!match) return 0;
+      let hours = parseInt(match[1]);
+      const minutes = match[2] ? parseInt(match[2]) : 0;
+      const meridiem = match[3].toUpperCase();
+      if (meridiem === 'PM' && hours !== 12) hours += 12;
+      if (meridiem === 'AM' && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    };
+
+    // Group bookings by date
+    const dateGroups = (group.bookings || []).reduce((acc, booking) => {
+      const date = booking.booking_date || 'N/A';
+      const courtName = booking.court || booking.court_name || 'N/A';
+      const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+      
+      if (!acc[date]) acc[date] = {};
+      if (!acc[date][courtName]) acc[date][courtName] = [];
+      if (!acc[date][courtName].includes(timeSlot)) acc[date][courtName].push(timeSlot);
+      
+      return acc;
+    }, {});
+
+    // Sort dates
+    const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
+
+    // Build message with separated dates
+    const dateBookingLines = sortedDates.map(date => {
+      const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const courtGroups = dateGroups[date];
+      
+      const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
+        times.sort((a, b) => sortTime(a) - sortTime(b));
+        const timesList = times.map(timeSlot => ` ${timeSlot}`).join('\n');
+        return `${courtName}\n${timesList}`;
+      }).join('\n\n');
+
+      return `📅 ${formattedDate}\n${courtLines}`;
+    }).join('\n\n');
+
+    const confirmationText = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n\n${dateBookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
+
+    // Store the text in a global variable for copying later
+    window.currentConfirmationText = confirmationText;
+    
+    // Update booking status to "paid" in Supabase
+    if (group.ids && group.ids.length > 0 && supabaseClient) {
+      const { error } = await supabaseClient
+        .from('bookings')
+        .update({ status: 'paid' })
+        .in('id', group.ids);
+
+      if (error) {
+        console.error('Error updating booking status:', error);
+        showToast('Warning: Could not update booking status');
+      } else {
+        console.log('Booking status updated to paid');
+      }
+    }
+    
+    // Display in modal
+    document.getElementById('confirmationText').textContent = confirmationText;
+    document.getElementById('bookingConfirmationModal').style.display = 'flex';
+    
+    // Reload bookings to reflect the status change
+    await loadBookings();
+  } catch (error) {
+    console.error('Error processing booking:', error);
+    showToast(`Error: ${error.message}`);
+  }
+}
+
+function closeBookingConfirmationModal() {
+  document.getElementById('bookingConfirmationModal').style.display = 'none';
+}
+
+function copyConfirmationText() {
+  const text = window.currentConfirmationText;
+  if (!text) {
+    showToast('No confirmation text to copy');
+    return;
+  }
+  
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Booking info copied to clipboard!');
+    
+    // Close the modal
+    closeBookingConfirmationModal();
+    
+    // Detect if mobile device
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      // On mobile, try to open Business Suite app or Messenger
+      // For iOS
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        window.location.href = 'fb://'; // Opens Facebook app
+      } 
+      // For Android
+      else {
+        window.location.href = 'fb://'; // Opens Facebook app
+      }
+      
+      // Fallback to web after a delay if app doesn't open
+      setTimeout(() => {
+        window.open('https://business.facebook.com/latest/inbox/messenger', '_blank');
+      }, 1500);
+    } else {
+      // On desktop, open the web URL
+      window.open('https://business.facebook.com/latest/inbox/messenger', '_blank');
+    }
+  }).catch(err => {
+    console.error('Failed to copy:', err);
+    showToast('Failed to copy booking info');
+  });
+}
+
+function openTodayModal() {
+  const today = new Date();
+  const todayKey = formatDateKey(today);
+  const todayBookings = allBookings.filter(b => {
+    const bookingDate = b.booking_date || b.date || '';
+    return bookingDate === todayKey;
+  });
+  const pending = todayBookings.filter(b => b.status === 'pending').length;
+  const paidCompleted = todayBookings.filter(b => b.status === 'paid' || b.status === 'completed').length;
+
+  document.getElementById('todaySummaryDate').textContent = today.toLocaleDateString();
+  document.getElementById('todaySummaryTotal').textContent = todayBookings.length;
+  document.getElementById('todaySummaryPending').textContent = pending;
+  document.getElementById('todaySummaryPaid').textContent = paidCompleted;
+
+  const listContainer = document.getElementById('todayBookingList');
+  listContainer.innerHTML = '';
+
+  if (todayBookings.length === 0) {
+    listContainer.innerHTML = '<div class="empty-list">No bookings found for today.</div>';
+  } else {
+    todayBookings.forEach(booking => {
+      const item = document.createElement('div');
+      const bookingDate = booking.booking_date || booking.date || '';
+      const timeSlot = booking.time_slot || booking.booking_time || 'TBD';
+      const reference = booking.reference_code || booking.reference || '';
+      item.className = 'list-item';
+      item.innerHTML = `
+        <div class="list-item-top">
+          <div><strong>${booking.customer_name || 'Unknown'}</strong> Â· ${booking.court || booking.court_name || 'Court'}</div>
+          <div class="status-badge ${booking.status || 'pending'}">${booking.status || 'pending'}</div>
+        </div>
+        <div class="list-item-bottom">
+          <span>${bookingDate}</span>
+          <span>${timeSlot}</span>
+          <span>₱${(booking.price || booking.rate || 0).toLocaleString()}</span>
+          <span>${reference}</span>
+        </div>
+      `;
+      listContainer.appendChild(item);
+    });
+  }
+
+  document.getElementById('todayModal').classList.add('open');
+}
+
+function closeTodayModal() {
+  document.getElementById('todayModal').classList.remove('open');
+}
+
+// Logout
+function logout() {
+  if (confirm('Are you sure you want to logout?')) {
+    sessionStorage.removeItem('adminToken');
+    window.location.href = 'index.html';
+  }
+}
+
+// Toast notification
+function showToast(message) {
+  const toast = document.getElementById('toast');
   toast.textContent = message;
   toast.classList.add('show');
   setTimeout(() => {
@@ -23,1888 +1416,16 @@ function showToast(message) {
   }, 3000);
 }
 
-function updateSuccessReceiptUploadState() {
-  const uploadButton = document.getElementById('successUploadReceiptBtn');
-  const statusNote = document.getElementById('receiptUploadedStatus');
-  if (!uploadButton || !statusNote) return;
-  if (receiptRefUploaded) {
-    uploadButton.disabled = true;
-    uploadButton.classList.add('disabled');
-    statusNote.style.display = 'block';
-  } else {
-    uploadButton.disabled = false;
-    uploadButton.classList.remove('disabled');
-    statusNote.style.display = 'none';
+// Close modal on escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeEditModal();
+    closeReceiptViewer();
+    closeBookingDetails();
+    closeTodayModal();
   }
-}
-
-async function uploadReceiptImage(file, reference) {
-  if (!supabaseClient || !file) return null;
-
-  const extension = file.name.split('.').pop().toLowerCase() || 'jpg';
-  const safeReference = reference.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filePath = `receipts/${safeReference}_${Date.now()}.${extension}`;
-
-  const { data, error } = await supabaseClient.storage
-    .from('receipts')
-    .upload(filePath, file, { cacheControl: '3600', upsert: false });
-
-  if (error) {
-    console.error('Receipt upload failed', error);
-    const message = error?.message || 'Receipt upload failed. Check your Supabase storage policy.';
-    showToast(message);
-    return null;
-  }
-
-  const { data: publicData, error: publicError } = await supabaseClient.storage
-    .from('receipts')
-    .getPublicUrl(filePath);
-
-  if (publicError) {
-    console.error('Could not get public URL for receipt', publicError);
-    showToast('Could not get receipt URL after upload.');
-    return null;
-  }
-
-  return publicData?.publicUrl || null;
-}
-
-document.addEventListener("DOMContentLoaded", async () => {
-  // Remove direct Supabase client - now using backend API
-  // Supabase keys are stored in backend environment variables for security
-
-  const dot = document.getElementById("statusDot");
-  const label = document.getElementById("statusLabel");
-
-  // Helper function to call backend API or direct Supabase client for local dev
-  async function callBackendAPI(action, data = {}) {
-    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:';
-
-    // If a direct Supabase fallback is configured and we're running locally, use it
-    if ((window.SUPABASE_FALLBACK && isLocal) || supabaseClient) {
-      if (!supabaseClient) {
-        const url = (window.SUPABASE_FALLBACK && window.SUPABASE_FALLBACK.url) || null;
-        const key = (window.SUPABASE_FALLBACK && window.SUPABASE_FALLBACK.key) || null;
-        if (!url || !key) {
-          throw new Error('Supabase fallback not configured for direct client');
-        }
-        supabaseClient = supabase.createClient(url, key);
-      }
-
-      try {
-        if (action === 'check-connection') {
-          const { error } = await supabaseClient.from('bookings').select('id').limit(1);
-          if (error) throw error;
-          return { status: 'connected' };
-        }
-
-        if (action === 'get-booked-slots') {
-          const { bookingDate } = data;
-          // Include status and receipt_reference so frontend can distinguish pending vs confirmed
-          const { data: rows, error } = await supabaseClient
-            .from('bookings')
-            .select('time_slot,court,customer_name,status,receipt_reference,created_at')
-            .eq('booking_date', bookingDate);
-          if (error) throw error;
-          return { bookings: rows || [] };
-        }
-
-        if (action === 'create-booking') {
-          const { bookingDate, timeSlot, court, customer_name, phone_number } = data;
-          const { data: inserted, error } = await supabaseClient
-            .from('bookings')
-            .insert([{
-              booking_date: bookingDate,
-              time_slot: timeSlot,
-              court,
-              customer_name,
-              phone_number,
-              created_at: new Date().toISOString()
-            }])
-            .select();
-          if (error) throw error;
-          return { success: true, booking: inserted?.[0] || null };
-        }
-
-        if (action === 'bulk-insert-bookings') {
-          const { bookings } = data;
-          const { data: inserted, error } = await supabaseClient.from('bookings').insert(bookings).select();
-          if (error) throw error;
-          return { success: true, count: inserted?.length || 0, bookings: inserted || [] };
-        }
-
-        if (action === 'get-booking-by-reference') {
-          const { reference } = data;
-          const { data: rows, error } = await supabaseClient.from('bookings').select('*').eq('reference_code', reference);
-          if (error) throw error;
-          return { bookings: rows || [] };
-        }
-
-        if (action === 'check-duplicate-receipt') {
-          const { receipt_reference } = data;
-          const { data: rows, error } = await supabaseClient.from('bookings').select('id').eq('receipt_reference', receipt_reference).limit(1);
-          if (error) throw error;
-          return { exists: rows && rows.length > 0, bookings: rows || [] };
-        }
-
-        if (action === 'update-booking-receipt') {
-          const { reference_code, receipt_reference, status } = data;
-          const { data: updated, error } = await supabaseClient
-            .from('bookings')
-            .update({ receipt_reference, status })
-            .eq('reference_code', reference_code)
-            .select();
-          if (error) throw error;
-          return { success: true, updated: updated?.length || 0, bookings: updated || [] };
-        }
-
-        if (action === 'confirm-booking') {
-          const { booking_id, reference_code } = data;
-          let query = supabaseClient.from('bookings').update({ status: 'confirmed' });
-          
-          if (booking_id) {
-            query = query.eq('id', booking_id);
-          } else if (reference_code) {
-            query = query.eq('reference_code', reference_code);
-          } else {
-            throw new Error('booking_id or reference_code is required');
-          }
-          
-          const { data: updated, error } = await query.select();
-          if (error) throw error;
-          return { success: true, updated: updated?.length || 0, bookings: updated || [] };
-        }
-
-        throw new Error('Unsupported action for direct Supabase client: ' + action);
-      } catch (err) {
-        console.error('Supabase direct call failed:', err);
-        throw err;
-      }
-    }
-
-    // Fallback to backend POST endpoint
-    try {
-      const response = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action, ...data })
-      });
-
-      if (!response.ok) {
-        let errorBody = null;
-        let textBody = null;
-        try {
-          errorBody = await response.json();
-        } catch (parseError) {
-          try {
-            textBody = await response.text();
-          } catch (textError) {
-            textBody = null;
-          }
-        }
-        const message = errorBody?.message || textBody || `API Error: ${response.status}`;
-        const err = new Error(message);
-        err.status = response.status;
-        err.body = errorBody;
-        err.text = textBody;
-        throw err;
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('API call failed:', error);
-      throw error;
-    }
-  }
-
-  try {
-    const result = await callBackendAPI('check-connection');
-    
-    dot.style.background = "#4ade80";
-    dot.style.boxShadow = "0 0 10px #4ade80";
-    label.textContent = "Connected";
-    label.style.color = "#4ade80";
-  } catch (err) {
-    console.error(err);
-    dot.style.background = "#f87171";
-    label.textContent = "Offline Mode";
-    label.style.color = "#f87171";
-  }
-
-  // Booked slots cache for the current selectedDate
-  let bookedSlots = {};
-
-  // Helper function to get initials from a name
-  function getInitials(name) {
-    if (!name) return '?';
-    return name
-      .split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-  }
-
-  // Helper function to get remaining time for pending slots (30 mins)
-  function getRemainingTime(timestamp) {
-    const now = Date.now();
-    const elapsed = now - timestamp;
-    const thirtyMins = 30 * 60 * 1000;
-    if (elapsed >= thirtyMins) return '0:00';
-    const remaining = thirtyMins - elapsed;
-    const mins = Math.floor(remaining / 60000);
-    const secs = Math.floor((remaining % 60000) / 1000);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
-
-  // Load booked slots from backend API for a specific dateKey (YYYY-MM-DD)
-  async function loadBookedSlotsForDate(dk) {
-    bookedSlots = {};
-    try {
-      const result = await callBackendAPI('get-booked-slots', { bookingDate: dk });
-      if (result.bookings && Array.isArray(result.bookings)) {
-        result.bookings.forEach(row => {
-          const courtIndex = COURTS.indexOf(row.court);
-          if (courtIndex >= 0 && row.time_slot) {
-            const status = (row.status || '').toString().toLowerCase();
-
-            const key = `${dk}|${row.time_slot}|${courtIndex}`;
-
-            if (status === 'pending') {
-              // Reconstruct pending timer from backend `created_at` so the timer
-              // persists across page reloads. Use created_at fallback to now.
-              let ts = Date.now();
-              try {
-                if (row.created_at) ts = new Date(row.created_at).getTime() || Date.now();
-              } catch (e) {
-                ts = Date.now();
-              }
-              // Only set pending timer if still within 30 minutes window
-              const thirtyMins = 30 * 60 * 1000;
-              if ((Date.now() - ts) < thirtyMins) {
-                pendingSlotsWithTimer[key] = ts;
-              } else {
-                // expired on backend; ensure no pending marker left
-                if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
-              }
-              return;
-            }
-
-            // Confirmed booking: mark as booked and clear any local pending marker
-            bookedSlots[key] = row.customer_name || 'Unknown';
-            if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
-          }
-        });
-      }
-    } catch (e) {
-      console.error('loadBookedSlotsForDate error', e);
-      // Don't block UI; show a subtle toast if connection failed
-      showToast('Could not load bookings (offline)');
-    }
-  }
-
-  // Helper to load bookings then render table
-  async function loadAndRenderTable() {
-    const dk = dateKey(selectedDate);
-    await loadBookedSlotsForDate(dk);
-    renderTable();
-  }
-
-  // 24-HOUR SLOTS
-  const SLOTS = [
-    '12:00 AM - 1:00 AM',
-    '1:00 AM - 2:00 AM',
-    '2:00 AM - 3:00 AM',
-    '3:00 AM - 4:00 AM',
-    '4:00 AM - 5:00 AM',
-    '5:00 AM - 6:00 AM',
-    '6:00 AM - 7:00 AM',
-    '7:00 AM - 8:00 AM',
-    '8:00 AM - 9:00 AM',
-    '9:00 AM - 10:00 AM',
-    '10:00 AM - 11:00 AM',
-    '11:00 AM - 12:00 PM',
-    '12:00 PM - 1:00 PM',
-    '1:00 PM - 2:00 PM',
-    '2:00 PM - 3:00 PM',
-    '3:00 PM - 4:00 PM',
-    '4:00 PM - 5:00 PM',
-    '5:00 PM - 6:00 PM',
-    '6:00 PM - 7:00 PM',
-    '7:00 PM - 8:00 PM',
-    '8:00 PM - 9:00 PM',
-    '9:00 PM - 10:00 PM',
-    '10:00 PM - 11:00 PM',
-    '11:00 PM - 12:00 AM'
-  ];
-
-  const COURTS = ['Court One', 'Court Two'];
-  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-  let selectedDate = new Date();
-  let today = new Date();
-  let viewMonth = today.getMonth();
-  let viewYear = today.getFullYear();
-
-  function dateKey(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
-  function formatDateDisplay(d) {
-    if (typeof d === 'string' || typeof d === 'number') {
-      d = new Date(d);
-    }
-    if (!(d instanceof Date) || Number.isNaN(d.getTime())) {
-      return String(d || '');
-    }
-    return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-  }
-
-  // Day rate: 6AM-6PM (slots starting 6AM through 5PM)
-  // Night rate: 6PM-6AM (slots starting 6PM through 5AM)
-  function getRate(slot) {
-    if (TEST_MODE_FORCE_ONE_PHP) {
-      return 1;
-    }
-    const daySlots = [
-      '6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM',
-      '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'
-    ];
-    return daySlots.some(t => slot.startsWith(t)) ? 450 : 500;
-  }
-
-  // Helper function to check if a slot is in the past
-  function isSlotPast(dateKey, slot) {
-    // Only check for past slots on today
-    const selectedDateObj = new Date(selectedDate);
-    const todayObj = new Date(today);
-    const isToday = selectedDateObj.getFullYear() === todayObj.getFullYear() &&
-                    selectedDateObj.getMonth() === todayObj.getMonth() &&
-                    selectedDateObj.getDate() === todayObj.getDate();
-
-    if (!isToday) return false; // Not today, so slot is not past
-
-    // Parse the start time from the slot (e.g., "1:00 AM - 2:00 AM" -> "1:00 AM")
-    const startTimeStr = slot.split(' - ')[0];
-    const [timeStr, period] = startTimeStr.match(/(\d+:\d+)\s(AM|PM)/).slice(1);
-    let [hours, minutes] = timeStr.split(':').map(Number);
-
-    // Convert to 24-hour format
-    if (period === 'AM' && hours === 12) {
-      hours = 0; // 12:XX AM is 00:XX
-    } else if (period === 'PM' && hours !== 12) {
-      hours += 12; // PM times add 12 (except 12 PM)
-    }
-
-    // Create a time object for today at this slot's start time
-    const slotTime = new Date(todayObj);
-    slotTime.setHours(hours, minutes, 0, 0);
-
-    // Current time
-    const now = new Date();
-
-    // Slot is past if its start time is before current time
-    return slotTime <= now;
-  }
-
-  function renderCalendar() {
-    const grid = document.getElementById('calGrid');
-    grid.innerHTML = '';
-    document.getElementById('calMonthYear').textContent = `${MONTHS[viewMonth]} ${viewYear}`;
-
-    DAYS.forEach(day => {
-      const el = document.createElement('div');
-      el.className = 'cal-dow';
-      el.textContent = day;
-      grid.appendChild(el);
-    });
-
-    const firstDay = new Date(viewYear, viewMonth, 1).getDay();
-    const totalDays = new Date(viewYear, viewMonth + 1, 0).getDate();
-
-    for (let i = 0; i < firstDay; i++) {
-      const empty = document.createElement('div');
-      empty.className = 'cal-day empty';
-      grid.appendChild(empty);
-    }
-
-    for (let d = 1; d <= totalDays; d++) {
-      const day = document.createElement('div');
-      day.className = 'cal-day';
-      day.textContent = d;
-
-      const thisDate = new Date(viewYear, viewMonth, d);
-      const isToday = d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
-      const isSelected = d === selectedDate.getDate() && viewMonth === selectedDate.getMonth() && viewYear === selectedDate.getFullYear();
-      const isPast = thisDate < new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-      if (isToday) day.classList.add('today');
-      if (isSelected && !isToday) day.classList.add('selected');
-      if (isPast) day.classList.add('past');
-
-      if (!isPast) {
-        day.onclick = () => {
-          selectedDate = new Date(viewYear, viewMonth, d);
-          renderCalendar();
-          loadAndRenderTable();
-        };
-      }
-
-      grid.appendChild(day);
-    }
-  }
-
-  document.getElementById('prevBtn').onclick = () => {
-    viewMonth--;
-    if (viewMonth < 0) {
-      viewMonth = 11;
-      viewYear--;
-    }
-    renderCalendar();
-    loadAndRenderTable();
-  };
-
-  document.getElementById('nextBtn').onclick = () => {
-    viewMonth++;
-    if (viewMonth > 11) {
-      viewMonth = 0;
-      viewYear++;
-    }
-    renderCalendar();
-    loadAndRenderTable();
-  };
-
-  window.goToToday = function() {
-    selectedDate = new Date(today);
-    viewMonth = today.getMonth();
-    viewYear = today.getFullYear();
-    renderCalendar();
-    loadAndRenderTable();
-  };
-
-  function renderTable() {
-    const dk = dateKey(selectedDate);
-    document.getElementById('selectedDateLabel').textContent = formatDateDisplay(selectedDate);
-
-    const body = document.getElementById('slotBody');
-    body.innerHTML = '';
-
-    SLOTS.forEach(slot => {
-      const tr = document.createElement('tr');
-      
-      const tdTime = document.createElement('td');
-      tdTime.className = 'time-cell';
-      tdTime.textContent = slot;
-      tr.appendChild(tdTime);
-
-      COURTS.forEach((court, index) => {
-        const tdC = document.createElement('td');
-        const key = `${dk}|${slot}|${index}`;
-        const btn = document.createElement('button');
-        btn.className = 'slot-btn';
-
-        // Check if slot is in the past (only for today)
-        const pastSlot = isSlotPast(dk, slot);
-
-        // If the slot is booked in Supabase, mark as booked and show initials
-        if (bookedSlots[key]) {
-          btn.classList.add('slot-booked');
-          btn.textContent = getInitials(bookedSlots[key]);
-          btn.disabled = true;
-        }
-        // Check if slot is pending (receipt uploaded, awaiting admin confirmation)
-        else if (pendingSlotsWithTimer[key] && (Date.now() - pendingSlotsWithTimer[key]) < 30 * 60 * 1000) {
-          btn.classList.add('slot-pending');
-          const remaining = getRemainingTime(pendingSlotsWithTimer[key]);
-          btn.textContent = `PENDING\n${remaining}`;
-          btn.style.whiteSpace = 'pre-wrap';
-          btn.disabled = true;
-        } else if (pastSlot) {
-          // Disable past slots
-          btn.classList.add('slot-past');
-          btn.textContent = 'Past';
-          btn.disabled = true;
-        } else if (selectedSlots.has(key)) {
-          btn.classList.add('slot-selected');
-          btn.textContent = '✓ Selected';
-        } else {
-          btn.classList.add('slot-available');
-          btn.textContent = 'Available';
-        }
-
-        btn.onclick = () => {
-          // Prevent selecting a slot that just became booked or is in the past
-          if (btn.disabled) return;
-          if (selectedSlots.has(key)) {
-            selectedSlots.delete(key);
-          } else {
-            selectedSlots.add(key);
-          }
-          updateCart();
-          renderTable();
-        };
-
-        tdC.appendChild(btn);
-        tr.appendChild(tdC);
-      });
-
-      body.appendChild(tr);
-    });
-  }
-
-  function updateCart() {
-    const count = selectedSlots.size;
-    const total = [...selectedSlots].reduce((sum, key) => {
-      return sum + getRate(key.split('|')[1]);
-    }, 0);
-
-    document.getElementById('cartCount').textContent = `${count} slot${count !== 1 ? 's' : ''} selected`;
-    document.getElementById('cartTotal').textContent = `₱${total.toLocaleString()}`;
-    document.getElementById('cartBar').classList.toggle('visible', count > 0);
-  }
-
-  window.clearForm = function() {
-    selectedSlots.clear();
-    updateCart();
-    loadAndRenderTable();
-    closeModal();
-    closeSuccessModal();
-    const refInput = document.getElementById('searchRef');
-    if (refInput) refInput.value = '';
-    showToast("🧹 Selection cleared!");
-  };
-
-  window.openModal = function() {
-    // Open the reference search modal (no selection required)
-    const refInput = document.getElementById('searchRef');
-    if (refInput) refInput.value = '';
-    document.getElementById('bookingModal').classList.add('open');
-    setTimeout(() => { const el = document.getElementById('searchRef'); if (el) el.focus(); }, 120);
-    updateCheckButtonState();
-  };
-
-  // Open the confirm modal which summarizes selected slots and collects name/phone
-  window.openConfirmModal = function() {
-    const container = document.getElementById('confirmSlotsContainer');
-    const dateEl = document.getElementById('confirmDate');
-    const countEl = document.getElementById('confirmCount');
-    const totalEl = document.getElementById('confirmTotal');
-    const nameEl = document.getElementById('confirmName');
-    const phoneEl = document.getElementById('confirmPhone');
-    const confirmBtn = document.getElementById('confirmModalBtn');
-
-    if (!container || !dateEl || !countEl || !totalEl) return openModal();
-
-    // Populate date
-    dateEl.textContent = formatDateDisplay(selectedDate);
-
-    // Build selected slots list
-    container.innerHTML = '';
-    const sel = [...selectedSlots];
-    let total = 0;
-    sel.forEach(key => {
-      const parts = key.split('|');
-      const date = parts[0];
-      const slot = parts[1];
-      const courtIndex = parseInt(parts[2], 10);
-      const court = COURTS[courtIndex] || 'Court';
-      const price = getRate(slot);
-      total += price;
-
-      const card = document.createElement('div');
-      card.style.background = 'rgba(255,255,255,0.02)';
-      card.style.padding = '12px';
-      card.style.borderRadius = '8px';
-      card.style.display = 'flex';
-      card.style.justifyContent = 'space-between';
-      card.style.alignItems = 'center';
-
-      const left = document.createElement('div');
-      left.innerHTML = `<div style="font-weight:700;color:#e5e7eb;">${court}</div><div style="color:#9ca3af;font-size:0.9rem;">${slot}</div>`;
-      const right = document.createElement('div');
-      right.style.color = 'var(--accent)';
-      right.style.fontWeight = '800';
-      right.textContent = `₱${price}`;
-
-      card.appendChild(left);
-      card.appendChild(right);
-      container.appendChild(card);
-    });
-
-    countEl.textContent = sel.length;
-    totalEl.textContent = `₱${total}`;
-
-    // Prefill name/phone from booking modal fields if available
-    const existingName = document.getElementById('bookingName');
-    const existingPhone = document.getElementById('bookingPhone');
-    if (nameEl) nameEl.value = existingName ? existingName.value : '';
-    if (phoneEl) phoneEl.value = existingPhone ? existingPhone.value : '';
-
-    // open modal
-    document.getElementById('confirmModal').classList.add('open');
-    setTimeout(() => { if (nameEl) nameEl.focus(); }, 120);
-
-    // Wire input events for validation
-    function updateConfirmModalButtonState() {
-      const name = (document.getElementById('confirmName') || {}).value || '';
-      const phone = (document.getElementById('confirmPhone') || {}).value || '';
-      if (!confirmBtn) return;
-      confirmBtn.disabled = !(name.trim() && phone.trim());
-    }
-
-    if (nameEl) nameEl.addEventListener('input', updateConfirmModalButtonState);
-    if (phoneEl) phoneEl.addEventListener('input', updateConfirmModalButtonState);
-    updateConfirmModalButtonState();
-  };
-
-  window.closeConfirmModal = function() { document.getElementById('confirmModal').classList.remove('open'); };
-
-  window.toggleSuccessPaymentExtension = async function() {
-    const checkbox = document.getElementById('successSaveCopy');
-    const section = document.getElementById('successPaySection');
-    const nextSteps = document.querySelector('.next-steps-card');
-    const messengerBtn = document.querySelector('.btn-messenger');
-    const actionText = document.getElementById('successPayActionText');
-    if (!checkbox || !section || !nextSteps) return;
-    if (checkbox.checked) {
-      section.style.display = 'block';
-      nextSteps.style.display = 'grid';
-      if (messengerBtn) messengerBtn.style.display = 'inline-flex';
-      if (actionText) actionText.textContent = 'You may now scan the QR code and upload your payment receipt to complete this booking.';
-      await downloadBookingConfirmationImage();
-    } else {
-      section.style.display = 'none';
-      nextSteps.style.display = 'none';
-      if (messengerBtn) messengerBtn.style.display = 'none';
-      if (actionText) actionText.textContent = 'Check the box to reveal the scan-to-pay section and upload your receipt proof.';
-    }
-  };
-
-  async function downloadBookingConfirmationImage() {
-    const target = document.querySelector('.success-download-card') || document.querySelector('.success-body-box');
-    if (!target || !window.html2canvas) {
-      console.warn('Cannot download booking image: target or html2canvas missing');
-      return;
-    }
-
-    try {
-      const canvas = await html2canvas(target, {
-        backgroundColor: '#08090d',
-        scale: Math.min(2, window.devicePixelRatio || 1)
-      });
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      const safeRef = (receiptBookingReference || 'booking-confirmation').replace(/[^a-zA-Z0-9-_]/g, '_');
-      link.href = dataUrl;
-      link.download = `${safeRef}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast('✅ Booking confirmation image downloaded');
-    } catch (err) {
-      console.error('Booking image download failed', err);
-      showToast('❌ Failed to download booking image');
-    }
-  }
-
-
-  function renderSuccessBookingItems(entries) {
-    const container = document.getElementById('successBookingItems');
-    if (!container) return;
-    container.innerHTML = '';
-    if (!entries || entries.length === 0) return;
-
-    const grouped = entries.reduce((acc, entry) => {
-      const courtName = entry.court_name || entry.court || 'Court';
-      const timeText = entry.booking_time || entry.time_slot || '';
-      const date = entry.booking_date || '';
-      const key = `${courtName}||${timeText}||${date}`;
-      if (!acc[key]) {
-        acc[key] = {
-          courtName,
-          timeText,
-          count: 0,
-          amount: 0,
-          status: (entry.status || 'pending').toUpperCase()
-        };
-      }
-      acc[key].count += 1;
-      acc[key].amount += (entry.price || entry.rate || 0);
-      return acc;
-    }, {});
-
-    Object.values(grouped).forEach(item => {
-      const row = document.createElement('div');
-      row.className = 'success-booking-item';
-      row.innerHTML = `
-        <div class="success-booking-item-info">
-          <div class="success-booking-item-title">${item.courtName}${item.count > 1 ? ` ×${item.count}` : ''}</div>
-          <div class="success-booking-item-meta">${item.timeText || '—'}</div>
-        </div>
-        <div class="success-booking-item-right">
-          <div class="success-booking-item-price">₱${item.amount.toLocaleString()}</div>
-          <span class="status-badge pending">${item.status}</span>
-        </div>
-      `;
-      container.appendChild(row);
-    });
-  }
-
-  window.openBookingSubmittedModal = function(reference, totalAmount) {
-    receiptBookingReference = reference;
-    receiptBookingTotal = totalAmount;
-
-    const titleEl = document.getElementById('successTitle');
-    const messageEl = document.getElementById('successMessage');
-    const nameEl = document.getElementById('successName');
-    const courtEl = document.getElementById('successCourt');
-    const dateEl = document.getElementById('successDate');
-    const timeEl = document.getElementById('successTime');
-    const paidTotalEl = document.getElementById('successPaidTotal');
-    const refCodeEl = document.getElementById('bookingRefCode');
-    const statusEl = document.getElementById('successBookingStatus');
-    const expiryEl = document.getElementById('successExpiryNote');
-    const saveCopyCheckbox = document.getElementById('successSaveCopy');
-    const paySection = document.getElementById('successPaySection');
-    const actionText = document.getElementById('successPayActionText');
-
-    if (titleEl) titleEl.textContent = 'Booking Submitted!';
-    if (messageEl) messageEl.textContent = 'Save a copy of this confirmation. When you are ready, scan to pay and upload your receipt proof.';
-    if (refCodeEl) refCodeEl.textContent = reference;
-    if (statusEl) statusEl.textContent = 'PENDING';
-    if (expiryEl) expiryEl.textContent = 'Expires in 4 hours if not confirmed';
-    if (actionText) actionText.textContent = 'Check the box to reveal the scan-to-pay section and upload your receipt proof.';
-
-    const messengerBtn = document.querySelector('.btn-messenger');
-    if (messengerBtn) {
-      const encodedRef = encodeURIComponent(`Booking Reference: ${reference}`);
-      messengerBtn.href = `https://www.messenger.com/t/1070406479496408?ref=${encodedRef}`;
-    }
-    if (saveCopyCheckbox) saveCopyCheckbox.checked = false;
-    if (paySection) paySection.style.display = 'none';
-    const nextStepsCard = document.querySelector('.next-steps-card');
-    if (nextStepsCard) nextStepsCard.style.display = 'none';
-    if (messengerBtn) messengerBtn.style.display = 'none';
-
-    const bookingEntries = [...pendingBookingEntries];
-    const successName = bookingEntries[0]?.customer_name || '';
-    const successCourt = bookingEntries[0]?.court_name || bookingEntries[0]?.court || '';
-    const successDate = bookingEntries[0]?.booking_date ? formatDateDisplay(bookingEntries[0].booking_date) : '';
-    const successTime = bookingEntries[0]?.booking_time || bookingEntries[0]?.time_slot || '';
-    const successPaidTotal = `₱${totalAmount.toLocaleString()}`;
-
-    if (nameEl) nameEl.textContent = successName;
-    if (courtEl) courtEl.textContent = successCourt;
-    if (dateEl) dateEl.textContent = successDate;
-    if (timeEl) timeEl.textContent = successTime;
-    if (paidTotalEl) paidTotalEl.textContent = successPaidTotal;
-    const scanTitleAmountEl = document.getElementById('scanTitleAmount');
-    if (scanTitleAmountEl) scanTitleAmountEl.textContent = successPaidTotal;
-
-    renderSuccessBookingItems(bookingEntries);
-    document.getElementById('successModal').classList.add('open');
-    bookingSubmissionTime = Date.now(); // Start 15-minute payment timer when modal opens
-  };
-
-  window.removeSlot = function(key) {
-    selectedSlots.delete(key);
-    updateCart();
-    loadAndRenderTable();
-    
-    if (selectedSlots.size === 0) {
-      closeModal();
-      showToast('All slots removed');
-    } else {
-      openModal(); // Re-render modal
-    }
-  };
-
-  window.closeModal = function() {
-    document.getElementById('bookingModal').classList.remove('open');
-  };
-
-  window.closeSuccessModal = function() {
-    document.getElementById('successModal').classList.remove('open');
-    bookingSubmissionTime = null; // Reset timer when modal closes
-  };
-
-  window.handleDoneBooking = async function() {
-    // Check if receipt was uploaded
-    const receiptUploaded = receiptRefUploaded === true;
-    const currentRef = receiptBookingReference;
-    
-    // Close the success modal and return to dashboard
-    closeSuccessModal();
-    
-    // Show message if receipt wasn't uploaded
-    if (!receiptUploaded && currentRef) {
-      showToast(`📋 Pay Later: Copy your Booking Reference ${currentRef} • Search to pay your reservation`);
-    }
-    
-    // Clear receipt state and pending entries for next booking
-    receiptFile = null;
-    receiptRefUploaded = false;
-    receiptTextExtracted = '';
-    receiptBookingReference = '';
-    receiptBookingTotal = 0;
-    pendingBookingEntries = [];
-    selectedSlots.clear();
-    
-    // Clear input fields
-    const refEl = document.getElementById('searchRef');
-    if (refEl) refEl.value = '';
-    
-    // Reload the table to show the new booking in pending or confirmed state
-    await loadAndRenderTable();
-  };
-
-  // Admin function to confirm a pending booking and copy confirmation message
-  window.confirmBooking = async function(referenceCode, bookingDetails) {
-    try {
-      // Update booking status to confirmed
-      const result = await callBackendAPI('confirm-booking', { reference_code: referenceCode });
-      
-      if (!result.success || result.updated === 0) {
-        showToast('❌ Could not confirm booking. Please try again.');
-        return;
-      }
-
-      // Get all bookings for this reference to build complete confirmation
-      const bookings = result.bookings || [];
-      const firstBooking = bookings[0] || bookingDetails || {};
-      const customerName = firstBooking.customer_name || 'Guest';
-      const totalAmount = bookings.reduce((sum, b) => sum + (b.price || b.rate || 0), 0);
-      const referenceCodeDisplay = referenceCode || 'N/A';
-      
-      // Group bookings by date, then by court
-      const dateGroups = {};
-      bookings.forEach(booking => {
-        const date = booking.booking_date || 'N/A';
-        const court = booking.court_name || booking.court || 'Court';
-        const timeSlot = booking.time_slot || booking.booking_time || '';
-        
-        if (!dateGroups[date]) {
-          dateGroups[date] = {};
-        }
-        if (!dateGroups[date][court]) {
-          dateGroups[date][court] = [];
-        }
-        dateGroups[date][court].push(timeSlot);
-      });
-
-      // Sort dates and build formatted confirmation message
-      const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
-      
-      let courtSections = '';
-      const courtOrder = ['Court One', 'Court Two'];
-      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
-      let emojiIndex = 0;
-      
-      sortedDates.forEach(date => {
-        const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        courtSections += `\n📅 ${formattedDate}`;
-        
-        const courts = dateGroups[date];
-        courtOrder.forEach(court => {
-          if (courts[court] && courts[court].length > 0) {
-            const slots = courts[court];
-            courtSections += `\n${court}\n`;
-            
-            slots.forEach((slot) => {
-              const timeEmoji = timeEmojis[emojiIndex % timeEmojis.length];
-              emojiIndex++;
-              courtSections += `${timeEmoji} ${slot}\n`;
-            });
-          }
-        });
-      });
-
-      const confirmationMessage = `BOOKING CONFIRMATION
-
-Hello ${customerName},
-
-Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅
-
-Name: ${firstBooking.customer_name || ''}
-Phone: ${firstBooking.phone_number || ''}
-📌 Booking Reference: ${referenceCodeDisplay}
-💳 Total Paid: ₱${totalAmount.toLocaleString()}${courtSections}`;
-
-      // Copy to clipboard
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(confirmationMessage);
-        showToast('✅ Booking confirmed! Message copied to clipboard.');
-      } else {
-        // Fallback for older browsers
-        const textarea = document.createElement('textarea');
-        textarea.value = confirmationMessage;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        showToast('✅ Booking confirmed! Message copied to clipboard.');
-      }
-
-      // Reload table to update status
-      await loadAndRenderTable();
-    } catch (err) {
-      console.error('Error confirming booking:', err);
-      showToast('❌ Error confirming booking. Please try again.');
-    }
-  };
-
-  window.submitBooking = async function() {
-    // Read values from either the detailed booking modal or the compact confirm modal
-    // Prefer values from the confirm modal when present (user-filled there)
-    const nameField = document.getElementById('confirmName') || document.getElementById('bookingName');
-    const phoneField = document.getElementById('confirmPhone') || document.getElementById('bookingPhone');
-    const notesField = document.getElementById('bookingNotes');
-
-    const name = nameField ? nameField.value.trim() : '';
-    const phone = phoneField ? phoneField.value.trim() : '';
-    const notes = notesField ? notesField.value.trim() : '';
-
-    // Require name and phone
-    if (!name || !phone) {
-      showToast('⚠️ Please fill in your name and phone');
-      return;
-    }
-
-    const confirmBtn = document.getElementById('confirmBtn') || document.getElementById('confirmModalBtn');
-    if (confirmBtn) {
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Processing...';
-    }
-
-    try {
-      // Generate booking reference
-      const refCode = 'PKL-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
-
-      // Prepare booking data and keep it pending until receipt verification
-      pendingBookingEntries = [...selectedSlots].map(key => {
-        const [date, slot, courtIndex] = key.split('|');
-        const payload = {
-          reference_code: refCode,
-          customer_name: name,
-          phone_number: '+63' + phone.replace(/\D/g, ''),
-          booking_date: date,
-          booking_time: slot,
-          time_slot: slot,
-          court_name: COURTS[parseInt(courtIndex)],
-          court: COURTS[parseInt(courtIndex)],
-          price: getRate(slot),
-          rate: getRate(slot),
-          status: 'pending',
-          fromExistingBooking: false,
-          persistedInDb: false
-        };
-        // Email field removed from the form; do not include customer_email here
-        if (notes) payload.notes = notes;
-        return payload;
-      });
-
-      const totalAmount = pendingBookingEntries.reduce((s, b) => s + (b.price || 0), 0);
-
-      // Persist pending booking entries to Supabase immediately so the admin dashboard can show them
-      try {
-        const bookingsToSave = pendingBookingEntries.map(entry => ({
-          booking_date: entry.booking_date,
-          booking_time: entry.booking_time,
-          time_slot: entry.time_slot,
-          court: entry.court,
-          court_name: entry.court_name,
-          customer_name: entry.customer_name,
-          phone_number: entry.phone_number,
-          reference_code: entry.reference_code,
-          status: entry.status,
-          price: entry.price,
-          rate: entry.rate,
-          notes: entry.notes
-        }));
-
-        const insertResult = await callBackendAPI('bulk-insert-bookings', { bookings: bookingsToSave });
-        if (!insertResult.success) {
-          throw new Error(insertResult.error || 'Failed to save pending booking');
-        }
-
-        pendingBookingEntries.forEach(entry => {
-          entry.persistedInDb = true;
-        });
-      } catch (err) {
-        console.error('Error saving pending booking:', err);
-        showToast('❌ Failed to save booking. Please try again.');
-        if (confirmBtn) {
-          confirmBtn.disabled = false;
-          confirmBtn.textContent = 'Next';
-        }
-        return;
-      }
-
-      // Mark selected slots as pending with 30-minute timer
-      selectedSlots.forEach(key => {
-        const [date, slot, courtIndex] = key.split('|');
-        const slotKey = `${date}|${slot}|${courtIndex}`;
-        pendingSlotsWithTimer[slotKey] = Date.now(); // 30-minute pending timer
-      });
-      startPendingPoll(); // Start polling to detect admin confirmations
-
-      // Close booking/confirm modal and show the booking submitted summary
-      closeModal();
-      closeConfirmModal();
-      openBookingSubmittedModal(refCode, totalAmount);
-
-      showToast('✅ Booking submitted! Save a copy and proceed to scan payment.');
-
-    } catch (err) {
-      console.error('Booking error:', err);
-      showToast('Booking failed. Please try again.');
-    } finally {
-        if (confirmBtn) {
-          confirmBtn.disabled = false;
-          confirmBtn.textContent = 'Next';
-        }
-    }
-  };
-
-  function updateConfirmButtonState() {
-    const confirmBtn = document.getElementById('confirmBtn');
-    const nameEl = document.getElementById('bookingName');
-    const phoneEl = document.getElementById('bookingPhone');
-    if (!confirmBtn || !nameEl || !phoneEl) return;
-    const name = nameEl.value.trim();
-    const phone = phoneEl.value.trim();
-    confirmBtn.disabled = !(name && phone);
-  }
-
-  // new: enable/disable the 'Check Status' button based on input
-  function updateCheckButtonState() {
-    const btn = document.getElementById('checkRefBtn');
-    const ref = document.getElementById('searchRef');
-    if (!btn) return;
-    btn.disabled = !ref || !ref.value.trim();
-  }
-
-  const searchInputEl = document.getElementById('searchRef');
-  if (searchInputEl) {
-    searchInputEl.addEventListener('input', updateCheckButtonState);
-    searchInputEl.addEventListener('keyup', (e) => {
-      if (e.key === 'Enter') {
-        const btn = document.getElementById('checkRefBtn');
-        if (btn && !btn.disabled) checkReference();
-      }
-    });
-  }
-
-    // Wire booking form inputs to enable/disable the Confirm button
-    const bookingNameEl = document.getElementById('bookingName');
-    const bookingEmailEl = document.getElementById('bookingEmail');
-    const bookingPhoneEl = document.getElementById('bookingPhone');
-    const bookingNotesEl = document.getElementById('bookingNotes');
-    const confirmBtnEl = document.getElementById('confirmBtn');
-
-    function attachBookingInputListeners() {
-      const inputs = [bookingNameEl, bookingEmailEl, bookingPhoneEl];
-      inputs.forEach(inp => {
-        if (!inp) return;
-        inp.addEventListener('input', updateConfirmButtonState);
-      });
-      updateConfirmButtonState();
-    }
-
-    attachBookingInputListeners();
-
-  // Search-by-reference handler
-  window.checkReference = async function() {
-    const refEl = document.getElementById('searchRef');
-    const btn = document.getElementById('checkRefBtn');
-    const resultsEl = document.getElementById('bookingCheckResults');
-    const contentEl = document.getElementById('bookingResultsContent');
-    const payBtn = document.getElementById('payNowBtn');
-
-    if (!refEl) return;
-    const ref = refEl.value.trim();
-    if (!ref) {
-      showToast('⚠️ Please enter a reference number');
-      return;
-    }
-
-    if (btn) {
-      btn.disabled = true;
-      var prevText = btn.textContent;
-      btn.textContent = 'Checking...';
-    }
-
-    try {
-      const result = await callBackendAPI('get-booking-by-reference', { reference: ref });
-      console.log('Search result:', result);
-      
-      if (!result || !result.bookings || result.bookings.length === 0) {
-        if (contentEl) {
-          contentEl.innerHTML = '<div style="color:#f87171;text-align:center;padding:16px;">🔎 Reference not found</div>';
-        }
-        if (resultsEl) resultsEl.style.display = 'block';
-        if (payBtn) payBtn.style.display = 'none';
-        return;
-      }
-
-      const status = result.bookings.some(b => b.status === 'pending')
-        ? 'pending'
-        : result.bookings.some(b => b.status === 'paid')
-          ? 'paid'
-          : result.bookings[0]?.status || 'pending';
-      receiptBookingReference = ref;
-      const totalAmount = result.bookings.reduce((sum, b) => sum + (b.price || b.rate || 0), 0);
-      
-      let displayDate = 'N/A';
-      try {
-        const bookingDate = result.bookings[0]?.booking_date;
-        if (bookingDate) {
-          displayDate = formatDateDisplay(bookingDate);
-        }
-      } catch (dateErr) {
-        console.warn('Error formatting date:', dateErr);
-        displayDate = result.bookings[0]?.booking_date || 'N/A';
-      }
-
-      const courtGroups = {};
-      if (Array.isArray(result.bookings)) {
-        result.bookings.forEach(booking => {
-          const courtName = booking.court_name || booking.court || 'Court';
-          const timeSlot = booking.time_slot || booking.booking_time || 'Unknown time';
-          if (!courtGroups[courtName]) {
-            courtGroups[courtName] = [];
-          }
-          courtGroups[courtName].push(timeSlot);
-        });
-      }
-
-      const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '�', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
-      const courtSections = Object.entries(courtGroups).map(([court, times]) => {
-        const sortedTimes = times.slice().sort();
-        const timesHtml = sortedTimes.map((time, index) => `
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span>${timeEmojis[index % timeEmojis.length]}</span>
-            <span style="color:#f8fafc;">${time}</span>
-          </div>
-        `).join('');
-        return `
-          <div style="padding:12px;border-radius:12px;border:1px solid rgba(236,72,153,0.14);background:rgba(255,255,255,0.03);">
-            <div style="font-weight:700;color:#f8fafc;margin-bottom:8px;">${court}</div>
-            ${timesHtml}
-          </div>
-        `;
-      }).join('');
-
-      let resultHtml = '<div style="display:flex;flex-direction:column;gap:12px;">';
-      if (status === 'paid' || status === 'confirmed') {
-        resultHtml += `
-          <div style="text-align:center;padding:16px;border:2px solid #10b981;border-radius:12px;background:rgba(16,185,129,0.1);">
-            <div style="font-size:1.2rem;margin-bottom:8px;">✅ Booking Confirmed</div>
-            <div style="color:#a7f3d0;font-weight:700;">Reference: ${ref}</div>
-          </div>
-        `;
-        if (payBtn) payBtn.style.display = 'none';
-      } else if (status === 'pending') {
-        resultHtml += `
-          <div style="text-align:center;padding:16px;border:2px solid #f59e0b;border-radius:12px;background:rgba(245,158,11,0.1);">
-            <div style="font-size:1.1rem;margin-bottom:8px;">⏳ Booking Pending Payment</div>
-            <div style="color:#fcd34d;">Payment required to confirm</div>
-          </div>
-        `;
-        if (payBtn) payBtn.style.display = 'inline-block';
-        receiptBookingTotal = totalAmount;
-
-        pendingBookingEntries = result.bookings.map(booking => ({
-          booking_date: booking.booking_date,
-          booking_time: booking.booking_time || booking.time_slot,
-          time_slot: booking.time_slot || booking.booking_time,
-          court: booking.court || booking.court_name,
-          court_name: booking.court_name || booking.court,
-          customer_name: booking.customer_name || '',
-          phone_number: booking.phone_number || '',
-          reference_code: booking.reference_code || ref,
-          price: booking.price || booking.rate || 0,
-          rate: booking.rate || booking.price || 0,
-          status: booking.status || 'pending',
-          notes: booking.notes,
-          fromExistingBooking: true,
-          persistedInDb: true
-        }));
-      }
-
-      resultHtml += `
-        <div style="background:rgba(255,255,255,0.03);padding:16px;border-radius:12px;border:1px solid rgba(236,72,153,0.14);">
-          <div style="font-size:1rem;margin-bottom:8px;">💳 Total Paid: ₱${totalAmount}</div>
-          <div style="font-size:1rem;">📅 Date: ${displayDate}</div>
-        </div>
-      `;
-      resultHtml += courtSections;
-      resultHtml += '</div>';
-
-      if (contentEl) contentEl.innerHTML = resultHtml;
-      if (resultsEl) resultsEl.style.display = 'block';
-
-    } catch (err) {
-      console.error('Search error:', err);
-      console.error('Error details:', {
-        message: err?.message,
-        status: err?.status,
-        body: err?.body,
-        stack: err?.stack
-      });
-      if (contentEl) {
-        const errorMsg = err?.message || 'Unknown error';
-        contentEl.innerHTML = `<div style="color:#f87171;text-align:center;padding:16px;">❌ Error: ${errorMsg}</div>`;
-      }
-      if (resultsEl) resultsEl.style.display = 'block';
-      if (payBtn) payBtn.style.display = 'none';
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = prevText || 'Check Status';
-      }
-    }
-  };
-
-  receiptBookingReference = '';
-  receiptBookingTotal = 0;
-  let receiptTextExtracted = '';
-
-  let receiptTimerInterval = null;
-  let receiptModalTimeout = null;
-
-  function clearReceiptModalTimer() {
-    if (receiptTimerInterval) {
-      clearInterval(receiptTimerInterval);
-      receiptTimerInterval = null;
-    }
-    if (receiptModalTimeout) {
-      clearTimeout(receiptModalTimeout);
-      receiptModalTimeout = null;
-    }
-  }
-
-  window.triggerReceiptUpload = function() {
-    const input = document.getElementById('receiptFileInput');
-    if (input) input.click();
-  };
-
-  // Refresh available slots from server and re-render table
-  window.refreshSlots = async function() {
-    try {
-      const refreshBtn = document.getElementById('refreshBtn');
-      if (refreshBtn) {
-        refreshBtn.disabled = true;
-        const prev = refreshBtn.textContent;
-        refreshBtn.textContent = 'Refreshing...';
-        await loadAndRenderTable();
-        refreshBtn.textContent = prev || 'Refresh';
-        refreshBtn.disabled = false;
-      } else {
-        await loadAndRenderTable();
-      }
-      showToast('Slots refreshed');
-    } catch (err) {
-      console.error('Failed to refresh slots', err);
-      showToast('Failed to refresh slots');
-      const refreshBtn = document.getElementById('refreshBtn');
-      if (refreshBtn) refreshBtn.disabled = false;
-    }
-  };
-
-  window.openReceiptModal = function(reference, totalAmount) {
-    clearReceiptModalTimer();
-    // Use global variables as fallback if parameters aren't provided
-    receiptBookingReference = reference || receiptBookingReference || '';
-    receiptBookingTotal = totalAmount != null ? totalAmount : receiptBookingTotal;
-    receiptTextExtracted = '';
-    receiptFile = null;
-    receiptRefUploaded = false;
-    updateSuccessReceiptUploadState();
-
-    const bookingRefField = document.getElementById('receiptBookingRef');
-    const refField = document.getElementById('receiptRef');
-    const amountField = document.getElementById('receiptAmount');
-    const dateTimeField = document.getElementById('receiptDateTime');
-    const statusField = document.getElementById('receiptScanStatus');
-    const mismatchField = document.getElementById('receiptMismatch');
-    const verifyBtn = document.getElementById('verifyReceiptBtn');
-    const previewContainer = document.getElementById('receiptPreviewContainer');
-    const fileInput = document.getElementById('receiptFileInput');
-    const previewImg = document.getElementById('receiptPreview');
-    const removeBtn = document.getElementById('receiptRemoveBtn');
-
-    if (bookingRefField) bookingRefField.textContent = receiptBookingReference || '—';
-    if (refField) refField.textContent = 'Waiting for receipt scan...';
-    if (amountField) amountField.textContent = receiptBookingTotal ? `₱${receiptBookingTotal.toLocaleString()}` : '₱0';
-    if (dateTimeField) dateTimeField.textContent = 'Waiting for upload...';
-    if (statusField) statusField.textContent = 'Upload the GCash receipt image to verify payment.';
-    if (mismatchField) mismatchField.textContent = '';
-    if (verifyBtn) verifyBtn.disabled = true;
-    if (previewContainer) previewContainer.style.display = 'none';
-    if (fileInput) fileInput.value = '';
-    if (previewImg) previewImg.src = '';
-    if (removeBtn) removeBtn.style.display = 'none';
-    const timerField = document.getElementById('receiptTimer');
-    if (timerField) timerField.textContent = 'Time remaining: 30:00';
-
-    const expiry = Date.now() + 30 * 60 * 1000;
-    receiptTimerInterval = setInterval(() => {
-      const remainingMs = expiry - Date.now();
-      if (remainingMs <= 0) {
-        if (timerField) timerField.textContent = 'Time remaining: 00:00';
-        clearReceiptModalTimer();
-        closeReceiptModal();
-        showToast('Payment time expired. Please reopen the receipt upload and try again.');
-        return;
-      }
-      const minutes = Math.floor(remainingMs / 60000);
-      const seconds = Math.floor((remainingMs % 60000) / 1000);
-      if (timerField) timerField.textContent = `Time remaining: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }, 1000);
-    receiptModalTimeout = setTimeout(() => {
-      clearReceiptModalTimer();
-      closeReceiptModal();
-      showToast('Payment time expired. Please reopen the receipt upload and try again.');
-    }, 30 * 60 * 1000);
-
-    document.getElementById('receiptModal').classList.add('open');
-  };
-
-  window.closeReceiptModal = function() {
-    clearReceiptModalTimer();
-    document.getElementById('receiptModal').classList.remove('open');
-    clearReceiptUpload();
-  };
-
-  function parseReceiptText(text) {
-    const cleaned = (text || '')
-      .replace(/\r/g, '\n')
-      .replace(/\t/g, ' ')
-      .replace(/[\u00A0\u202F\u2060]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const upper = cleaned.toUpperCase();
-
-    const dateMatch = upper.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})|(\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})/);
-    const timeMatch = upper.match(/(\d{1,2}:\d{2}\s*(AM|PM))|(\d{1,2}:\d{2})/);
-    const refMatch = upper.match(/(?:RECEIPT\s*REFERENCE|RECEIPT\s*REF(?:ERENCE)?|RECEIPT\s*NO|RECEIPT\s*#|REF(?:ERENCE)?(?:\s*NO\.?)?|RRN|REFERENCE(?:\s*NO)?|REF#|REFERENCE#|BOOKING\s*REF)[\s:\-]*([A-Z0-9\-\s]{4,})/i);
-    const fallbackRefMatch = upper.match(/(?:REF(?:\.|\s*NO\.?|\s*NUMBER)?|RRN|REFERENCE)[\s:\-]*([0-9][0-9\s\-]{8,})/i)
-      || upper.match(/\b(\d{4}\s*\d{3}\s*\d{6,7})\b/);
-    const amountMatch = upper.match(/(?:TOTAL\s*AMOUNT\s*SENT|TOTAL\s*AMOUNT|TOTAL\s*PAID|AMOUNT\s*PAID|AMOUNT\s*SENT|GRAND\s*TOTAL|AMOUNT|TOTAL)(?:\s*[:\-]?\s*)₱?\s*([\d,]+\.\d{2}|[\d,]+)/i)
-      || upper.match(/₱\s*([\d,]+\.\d{1,2}|[\d,]+)/);
-
-    const amount = amountMatch ? Number(amountMatch[1].replace(/,/g, '')) : null;
-    const extractedRef = (refMatch || fallbackRefMatch) ? (refMatch || fallbackRefMatch)[1].trim() : '';
-    const digitsMatch = cleaned.match(/\b(\d(?:[\s\-]?\d){12})\b/);
-    const extracted13Digits = digitsMatch ? digitsMatch[1].replace(/\D/g, '') : extractedRef.replace(/\D/g, '').slice(0, 13);
-    const reference = extracted13Digits.length === 13 ? extracted13Digits : '';
-    const date = dateMatch ? dateMatch[0] : '';
-    const time = timeMatch ? timeMatch[0] : '';
-
-    return { raw: cleaned, date, time, amount, reference };
-  }
-
-  function setReceiptFields(parsed) {
-    const refField = document.getElementById('receiptRef');
-    const amountField = document.getElementById('receiptAmount');
-    const dateTimeField = document.getElementById('receiptDateTime');
-
-    if (refField) refField.textContent = parsed.reference || 'Not found';
-    if (amountField) amountField.textContent = parsed.amount != null ? `₱${parsed.amount.toLocaleString()}` : `₱${receiptBookingTotal.toLocaleString()}`;
-    if (dateTimeField) dateTimeField.textContent = [parsed.date, parsed.time].filter(Boolean).join(' ') || 'Date / time not found';
-  }
-
-
-
-  function getParsedReceiptData() {
-    return receiptTextExtracted ? parseReceiptText(receiptTextExtracted) : { reference: '', amount: null };
-  }
-
-  function updateReceiptVerificationState() {
-    const verifyBtn = document.getElementById('verifyReceiptBtn');
-    const statusEl = document.getElementById('receiptScanStatus');
-    if (!verifyBtn) return;
-
-    const parsed = getParsedReceiptData();
-    const reference = parsed.reference;
-    const amount = parsed.amount;
-    const hasReceiptFile = Boolean(receiptFile);
-    const amountMissing = amount == null;
-    const amountMatches = amountMissing ? false : Number(amount.toFixed(2)) === Number(receiptBookingTotal.toFixed(2));
-    const valid = hasReceiptFile && reference && amountMatches;
-
-    verifyBtn.disabled = !valid;
-
-    if (statusEl) {
-      if (!hasReceiptFile) {
-        statusEl.textContent = 'Upload the receipt screenshot to continue.';
-      } else if (!reference) {
-        statusEl.textContent = 'Receipt reference could not be detected. Try a clearer photo.';
-      } else if (amountMissing) {
-        statusEl.textContent = 'Receipt amount could not be detected. Try a clearer photo.';
-      } else if (!amountMatches) {
-        statusEl.textContent = 'Receipt total does not match booking total. Check the amount.';
-      } else {
-        statusEl.textContent = 'Ready to verify receipt.';
-      }
-    }
-  }
-
-  async function decodeReceiptImage(file) {
-    const reader = new FileReader();
-    return new Promise((resolve, reject) => {
-      reader.onerror = () => reject(reader.error);
-      reader.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          resolve({ canvas, dataUrl: reader.result });
-        };
-        img.onerror = reject;
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  window.handleReceiptFile = async function(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    receiptFile = file;
-    const statusEl = document.getElementById('receiptScanStatus');
-    const previewContainer = document.getElementById('receiptPreviewContainer');
-    const previewImg = document.getElementById('receiptPreview');
-    const verifyBtn = document.getElementById('verifyReceiptBtn');
-    const mismatchEl = document.getElementById('receiptMismatch');
-    const removeBtn = document.getElementById('receiptRemoveBtn');
-    const uploadBtn = document.getElementById('receiptUploadBtn');
-    const uploadNote = document.getElementById('receiptUploadedNote');
-    const fileInput = document.getElementById('receiptFileInput');
-
-    if (statusEl) statusEl.textContent = 'Reading receipt and scanning QR...';
-    if (mismatchEl) mismatchEl.textContent = '';
-    if (previewContainer) previewContainer.style.display = 'none';
-    if (verifyBtn) verifyBtn.disabled = true;
-    if (removeBtn) removeBtn.style.display = 'none';
-    if (uploadBtn) uploadBtn.disabled = true;
-    if (fileInput) fileInput.disabled = true;
-    if (uploadNote) {
-      uploadNote.style.display = 'none';
-    }
-
-    try {
-      const { canvas, dataUrl } = await decodeReceiptImage(file);
-      if (previewImg) previewImg.src = dataUrl;
-      if (previewContainer) previewContainer.style.display = 'flex';
-      if (removeBtn) removeBtn.style.display = 'inline-flex';
-
-      let qrText = '';
-      if (window.jsQR) {
-        try {
-          const ctx = canvas.getContext('2d');
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const qr = jsQR(imageData.data, imageData.width, imageData.height);
-          if (qr && qr.data) {
-            qrText = qr.data;
-          }
-        } catch (e) {
-          console.warn('QR scan failed', e);
-        }
-      }
-
-      let parsedText = '';
-      if (window.Tesseract && typeof window.Tesseract.recognize === 'function') {
-        const result = await Tesseract.recognize(canvas, 'eng', {
-          logger: m => {
-            if (m.status === 'recognizing text' && m.progress === 1) {
-              console.log('Tesseract completed');
-            }
-          }
-        });
-        parsedText = result?.data?.text || '';
-      }
-
-      if (!parsedText) {
-        if (statusEl) statusEl.textContent = 'Receipt text could not be extracted. Please try a clearer image.';
-        updateReceiptVerificationState();
-        return;
-      }
-
-      receiptTextExtracted = parsedText;
-      const parsed = parseReceiptText(parsedText);
-      setReceiptFields(parsed);
-
-      let mismatchMessage = '';
-      if (parsed.amount != null && Number(parsed.amount.toFixed(2)) !== Number(receiptBookingTotal.toFixed(2))) {
-        mismatchMessage += `Amount mismatch: receipt shows ₱${parsed.amount.toLocaleString()} but booking total is ₱${receiptBookingTotal.toLocaleString()}. `;
-      }
-      if (statusEl) {
-        const summary = [parsed.date, parsed.time, parsed.reference, parsed.amount != null ? `₱${parsed.amount.toLocaleString()}` : null].filter(Boolean).join(' · ');
-        statusEl.textContent = qrText ? `QR scanned · ${summary}` : `Receipt data extracted · ${summary}`;
-      }
-      if (mismatchEl) mismatchEl.textContent = mismatchMessage;
-      const hasReceiptRef = Boolean(parsed.reference);
-      receiptRefUploaded = hasReceiptRef;
-      updateSuccessReceiptUploadState();
-      updateReceiptVerificationState();
-
-      if (uploadNote && hasReceiptRef) {
-        uploadNote.style.display = 'block';
-        uploadNote.textContent = '✅ Receipt uploaded!';
-      }
-
-      if (!hasReceiptRef) {
-        if (uploadBtn) {
-          uploadBtn.disabled = false;
-        }
-        if (fileInput) fileInput.disabled = false;
-      }
-
-    } catch (err) {
-      console.error('Receipt upload error', err);
-      if (statusEl) statusEl.textContent = 'Failed to read receipt. Please upload a clear image.';
-      if (uploadBtn) uploadBtn.disabled = false;
-      if (fileInput) fileInput.disabled = false;
-      if (uploadNote) uploadNote.style.display = 'none';
-      receiptRefUploaded = false;
-      updateSuccessReceiptUploadState();
-    }
-  };
-
-  window.clearReceiptUpload = function() {
-    receiptTextExtracted = '';
-    receiptFile = null;
-    const statusEl = document.getElementById('receiptScanStatus');
-    const previewContainer = document.getElementById('receiptPreviewContainer');
-    const previewImg = document.getElementById('receiptPreview');
-    const previewRemoveBtn = document.getElementById('receiptRemoveBtn');
-    const fileInput = document.getElementById('receiptFileInput');
-    const verifyBtn = document.getElementById('verifyReceiptBtn');
-    const mismatchEl = document.getElementById('receiptMismatch');
-    const uploadBtn = document.getElementById('receiptUploadBtn');
-    const uploadNote = document.getElementById('receiptUploadedNote');
-
-    if (previewImg) previewImg.src = '';
-    if (previewContainer) previewContainer.style.display = 'none';
-    if (previewRemoveBtn) previewRemoveBtn.style.display = 'none';
-    if (fileInput) {
-      fileInput.value = '';
-      fileInput.disabled = false;
-    }
-    if (uploadBtn) uploadBtn.disabled = false;
-    if (uploadNote) uploadNote.style.display = 'none';
-    if (verifyBtn) verifyBtn.disabled = true;
-    if (statusEl) statusEl.textContent = 'Receipt upload removed. Choose a different image.';
-    if (mismatchEl) mismatchEl.textContent = '';
-    receiptRefUploaded = false;
-    updateSuccessReceiptUploadState();
-  };
-
-  // NOTE: For full protection against race conditions, add a unique DB constraint
-  // on bookings(booking_date, time_slot, court) in Supabase. This front-end check helps
-  // catch conflicts early, but the database constraint is the final guard.
-  // Example SQL for Supabase SQL editor:
-  // ALTER TABLE bookings
-  //   ADD CONSTRAINT bookings_unique_slot
-  //   UNIQUE (booking_date, time_slot, court);
-  async function checkSlotAvailability(entries) {
-    if (!entries || entries.length === 0) {
-      return { ok: true, conflicts: [] };
-    }
-
-    const date = entries[0].booking_date;
-    if (!date) {
-      return { ok: false, conflicts: [] };
-    }
-
-    try {
-      const result = await callBackendAPI('get-booked-slots', { bookingDate: date });
-      
-      const bookedMap = new Map();
-      (result.bookings || []).forEach(row => {
-        if (row.booking_date && row.time_slot && row.court) {
-          bookedMap.set(`${row.booking_date}|${row.time_slot}|${row.court}`, row);
-        }
-      });
-
-      const conflicts = entries.filter(entry => {
-        const key = `${entry.booking_date}|${entry.booking_time}|${entry.court}`;
-        return bookedMap.has(key);
-      }).map(entry => ({
-        booking_date: entry.booking_date,
-        booking_time: entry.booking_time,
-        court: entry.court
-      }));
-
-      return { ok: conflicts.length === 0, conflicts };
-    } catch (err) {
-      console.error('checkSlotAvailability error:', err);
-      return { ok: false, conflicts: [], error: err };
-    }
-  }
-
-  window.verifyReceipt = async function() {
-    if (!receiptFile) {
-      showToast('Upload the receipt screenshot first.');
-      return;
-    }
-    const parsed = getParsedReceiptData();
-    const receiptReference = parsed.reference;
-    const receiptAmount = parsed.amount;
-    const mismatchEl = document.getElementById('receiptMismatch');
-    
-    // Determine whether this booking already exists in Supabase (from search or earlier save)
-    const isExistingBooking = Boolean(pendingBookingEntries[0]?.fromExistingBooking || pendingBookingEntries[0]?.persistedInDb);
-    
-    console.log('Parsed receipt data:', { receiptReference, receiptAmount, receiptBookingTotal: receiptBookingTotal });
-    console.log('Full booking entry:', JSON.stringify(pendingBookingEntries[0], null, 2));
-    console.log('Reference code from entry:', pendingBookingEntries[0]?.reference_code);
-    console.log('Is existing booking?', isExistingBooking);
-    
-    if (!receiptReference) {
-      if (mismatchEl) mismatchEl.textContent = 'Receipt reference could not be detected from the image. Please try a clearer photo.';
-      return;
-    }
-    if (receiptAmount == null) {
-      if (mismatchEl) mismatchEl.textContent = 'Receipt amount could not be detected from the image. Please try a clearer photo.';
-      return;
-    }
-    if (Number(receiptAmount.toFixed(2)) !== Number(receiptBookingTotal.toFixed(2))) {
-      if (mismatchEl) mismatchEl.textContent = 'Receipt total amount does not match the booking total.';
-      return;
-    }
-
-    if (!pendingBookingEntries || pendingBookingEntries.length === 0) {
-      showToast('Booking data is missing. Please restart the booking process.');
-      return;
-    }
-
-    if (!isExistingBooking) {
-      const slotCheck = await checkSlotAvailability(pendingBookingEntries);
-      if (!slotCheck.ok) {
-        const conflictText = slotCheck.conflicts.length > 0
-          ? slotCheck.conflicts.map(conflict => `${conflict.court} ${conflict.booking_date} ${conflict.booking_time}`).join('; ')
-          : 'Could not verify slot availability.';
-        const message = slotCheck.conflicts.length > 0
-          ? `One or more selected slots were already booked: ${conflictText}. Please refresh and choose a different slot.`
-          : 'Could not verify slot availability. Please try again.';
-        if (mismatchEl) mismatchEl.textContent = message;
-        showToast(message);
-        return;
-      }
-    }
-
-    // Check if receipt reference already exists in database to prevent duplicates
-    try {
-      const checkResult = await callBackendAPI('check-duplicate-receipt', { 
-        receipt_reference: parsed.reference 
-      });
-      
-      if (checkResult.exists) {
-        if (mismatchEl) mismatchEl.textContent = 'This receipt has already been used. Duplicate booking not allowed.';
-        showToast('Duplicate receipt detected. This receipt already exists in the system.');
-        return;
-      }
-    } catch (err) {
-      console.error('Error checking for duplicate receipt:', err);
-      if (mismatchEl) mismatchEl.textContent = 'Error checking receipt. Please try again.';
-      return;
-    }
-
-    // Check if this is an existing booking (from database search) or a new booking
-    // (isExistingBooking already declared above for slot availability check)
-    
-    let updateError = null;
-    try {
-      if (isExistingBooking) {
-        // Update existing booking with receipt - stays pending until admin confirms
-        const result = await callBackendAPI('update-booking-receipt', {
-          reference_code: pendingBookingEntries[0].reference_code,
-          receipt_reference: parsed.reference,
-          status: 'pending'
-        });
-        console.log('Update receipt API response:', result);
-        if (!result.success) {
-          updateError = new Error(result.error || 'Failed to update booking');
-        }
-      } else {
-        // Insert new booking
-        const bookingsToInsert = pendingBookingEntries.map(entry => ({
-          booking_date: entry.booking_date,
-          booking_time: entry.booking_time,
-          time_slot: entry.time_slot,
-          court: entry.court,
-          court_name: entry.court_name,
-          customer_name: entry.customer_name,
-          phone_number: entry.phone_number,
-          reference_code: entry.reference_code,
-          receipt_reference: parsed.reference,
-          status: 'pending',
-          price: entry.price,
-          rate: entry.rate,
-          notes: entry.notes
-        }));
-        console.log('Inserting new bookings:', bookingsToInsert);
-        const result = await callBackendAPI('bulk-insert-bookings', { bookings: bookingsToInsert });
-        console.log('Insert bookings API response:', result);
-        if (!result.success) {
-          updateError = new Error(result.error || 'Failed to insert bookings');
-        }
-      }
-    } catch (err) {
-      updateError = err;
-    }
-
-    if (updateError) {
-      console.error('Receipt verification error:', updateError);
-      console.error('API error body:', updateError?.body);
-      console.error('Error details:', JSON.stringify(updateError, null, 2));
-      const errorText = updateError?.body?.message || updateError?.message || updateError?.body?.error || updateError?.error_description || updateError?.details || JSON.stringify(updateError);
-      const errorMsg = String(errorText || 'Unknown database error');
-      let userMessage = `Booking update failed: ${errorMsg}`;
-
-      if (mismatchEl) mismatchEl.textContent = userMessage;
-      showToast(userMessage);
-
-      await loadAndRenderTable();
-      return;
-    }
-
-    console.log('Receipt verification successful:', { referenceCode: receiptBookingReference, parsed });
-
-    // No server-side email sending configured in this build.
-
-    const entriesToRender = [...pendingBookingEntries];
-    
-    // For existing bookings (already in database), skip pending slot marking
-    // For new bookings, mark slots as pending with 30-minute timer
-    if (!isExistingBooking) {
-      entriesToRender.forEach(entry => {
-        const courtIndex = COURTS.indexOf(entry.court_name || entry.court);
-        const key = `${entry.booking_date}|${entry.booking_time || entry.time_slot}|${courtIndex}`;
-        pendingSlotsWithTimer[key] = Date.now(); // 30-minute pending timer
-      });
-      startPendingPoll();
-    }
-
-    const successName = entriesToRender[0]?.customer_name || '';
-    const successCourt = entriesToRender[0]?.court_name || entriesToRender[0]?.court || '';
-    const successDate = entriesToRender[0]?.booking_date ? formatDateDisplay(entriesToRender[0].booking_date) : '';
-    const successTime = entriesToRender[0]?.booking_time || entriesToRender[0]?.time_slot || '';
-    const successPaidTotal = `₱${entriesToRender.reduce((sum, entry) => sum + (entry.price || entry.rate || 0), 0).toLocaleString()}`;
-
-    pendingBookingEntries = [];
-    selectedSlots.clear();
-    updateCart();
-    await loadAndRenderTable();
-
-    closeReceiptModal();
-    closeModal(); // Close the search booking modal as well
-    document.getElementById('successTitle').textContent = 'Booking Submitted';
-    document.getElementById('successMessage').textContent = isExistingBooking 
-      ? `Receipt uploaded for ${receiptBookingReference}. Awaiting admin approval.`
-      : `Booking submitted for ${receiptBookingReference}. Awaiting admin approval.`;
-    document.getElementById('successName').textContent = successName;
-    const successCourtEl = document.getElementById('successCourt');
-    const successDateEl = document.getElementById('successDate');
-    const successTimeEl = document.getElementById('successTime');
-    const successPaidTotalEl = document.getElementById('successPaidTotal');
-    const scanTitleAmountEl = document.getElementById('scanTitleAmount');
-    const bookingRefCodeEl = document.getElementById('bookingRefCode');
-
-    if (successCourtEl) successCourtEl.textContent = successCourt;
-    if (successDateEl) successDateEl.textContent = successDate;
-    if (successTimeEl) successTimeEl.textContent = successTime;
-    if (successPaidTotalEl) successPaidTotalEl.textContent = successPaidTotal;
-    if (scanTitleAmountEl) scanTitleAmountEl.textContent = successPaidTotal;
-    if (bookingRefCodeEl) bookingRefCodeEl.textContent = receiptBookingReference;
-    renderSuccessBookingItems(entriesToRender);
-    document.getElementById('successModal').classList.add('open');
-    bookingSubmissionTime = Date.now();
-    receiptRefUploaded = true;
-    updateSuccessReceiptUploadState();
-    const statusNote = document.getElementById('receiptUploadedStatus');
-    if (statusNote) {
-      statusNote.style.display = 'block';
-    }
-  };
-
-  // Close modal on overlay click
-  document.getElementById('bookingModal').onclick = function(e) {
-    if (e.target === this) closeModal();
-  };
-  document.getElementById('successModal').onclick = function(e) {
-    if (e.target === this) closeSuccessModal();
-  };
-
-  // Initialize
-  renderCalendar();
-  loadAndRenderTable();
-
-  // Track booking submission time for timer
-  let bookingSubmissionTime = null;
-  // Polling interval id for checking backend confirmations of pending slots
-  let pendingPollInterval = null;
-
-  function startPendingPoll() {
-    if (pendingPollInterval) return;
-    pendingPollInterval = setInterval(async () => {
-      if (Object.keys(pendingSlotsWithTimer).length === 0) {
-        clearInterval(pendingPollInterval);
-        pendingPollInterval = null;
-        return;
-      }
-      try {
-        await loadAndRenderTable();
-      } catch (e) {
-        console.error('Pending poll load failed', e);
-      }
-    }, 5000); // poll every 5s while pending slots exist
-  }
-
-  // Update timer display every second
-  setInterval(() => {
-    const now = Date.now();
-    const thirtyMins = 30 * 60 * 1000;
-    const fifteenMins = 15 * 60 * 1000;
-    
-    // Update pending slots timer (30 minutes)
-    Object.keys(pendingSlotsWithTimer).forEach(key => {
-      if (now - pendingSlotsWithTimer[key] >= thirtyMins) {
-        delete pendingSlotsWithTimer[key];
-      }
-    });
-
-    // Re-render pending slots every second so the timer countdown stays live.
-    if (Object.keys(pendingSlotsWithTimer).length > 0) {
-      renderTable();
-    }
-
-    // Update payment/booking modal timer (15 minutes) if modal is open
-    if (bookingSubmissionTime) {
-      const elapsed = now - bookingSubmissionTime;
-      const remaining = fifteenMins - elapsed;
-      
-      if (remaining <= 0) {
-        const expiryEl = document.getElementById('successExpiryNote');
-        if (expiryEl) expiryEl.textContent = 'Payment window expired - booking requires re-submission';
-        bookingSubmissionTime = null;
-      } else {
-        const mins = Math.floor(remaining / 60000);
-        const secs = Math.floor((remaining % 60000) / 1000);
-        const expiryEl = document.getElementById('successExpiryNote');
-        if (expiryEl) {
-          expiryEl.textContent = `Expires in ${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-      }
-    }
-  }, 1000);
 });
+
+
+
+
