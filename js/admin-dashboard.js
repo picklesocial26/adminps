@@ -1,4 +1,4 @@
-// admin-dashboard.js
+﻿// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
