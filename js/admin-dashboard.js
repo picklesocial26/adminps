@@ -1,4 +1,4 @@
-﻿// admin-dashboard.js
+// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -31,7 +31,9 @@ function groupBookings(bookings) {
         status: booking.status || 'pending',
         courts: new Set(),
         dates: new Set(),
-        times: new Set()
+        times: new Set(),
+        createdAt: null,
+        bookedOn: 'N/A'
       };
     }
 
@@ -42,6 +44,16 @@ function groupBookings(bookings) {
     group.courts.add(booking.court || booking.court_name || 'N/A');
     group.dates.add(booking.booking_date || 'N/A');
     group.times.add(booking.time_slot || booking.booking_time || 'N/A');
+
+    const createdAtValue = booking.created_at || booking.createdAt || null;
+    if (createdAtValue) {
+      const createdAtDate = new Date(createdAtValue);
+      if (!isNaN(createdAtDate.getTime())) {
+        if (!group.createdAt || createdAtDate < group.createdAt) {
+          group.createdAt = createdAtDate;
+        }
+      }
+    }
 
     if (group.status !== 'pending') {
       if (booking.status === 'pending') {
@@ -56,6 +68,7 @@ function groupBookings(bookings) {
     group.courtSummary = group.courts.size === 1 ? Array.from(group.courts)[0] : 'See details';
     group.dateSummary = group.dates.size === 1 ? Array.from(group.dates)[0] : 'See details';
     group.timeSummary = group.times.size === 1 ? Array.from(group.times)[0] : 'See details';
+    group.bookedOn = group.createdAt ? formatDateTime(group.createdAt) : 'N/A';
     group.status = group.bookings.some(b => b.status === 'pending') ? 'pending' : group.bookings.some(b => b.status === 'paid') ? 'paid' : group.bookings[0]?.status || 'pending';
     return group;
   });
@@ -309,6 +322,7 @@ function renderTable() {
     const refCell = createCell(group.reference_code || 'N/A');
     const nameCell = createCell(group.customer_name || 'N/A');
     const phoneCell = createCell(formatPhone(group.phone_number || 'N/A'));
+    const bookedOnCell = createCell(group.bookedOn || 'N/A');
     const courtCell = createCell(group.courtSummary || 'Multiple');
     const dateCell = createCell(group.dateSummary || 'Multiple');
     const timeCell = createCell(group.timeSummary || 'Multiple');
@@ -367,6 +381,7 @@ function renderTable() {
     row.appendChild(refCell);
     row.appendChild(nameCell);
     row.appendChild(phoneCell);
+    row.appendChild(bookedOnCell);
     row.appendChild(courtCell);
     row.appendChild(dateCell);
     row.appendChild(timeCell);
@@ -587,6 +602,18 @@ function formatPhone(phone) {
     return `+63 ${last10.substring(0, 3)} ${last10.substring(3, 6)} ${last10.substring(6)}`;
   }
   return phone;
+}
+
+function formatDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!date || isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
 
 // Update earnings cards
@@ -889,7 +916,70 @@ function copyBookingDetailsConfirmation() {
   } else {
     prompt('Copy the text below for Messenger:', message);
   }
-}function previousPage() {
+}
+
+function copyBookingDetailsPendingMessage() {
+  const group = currentBookingDetailsGroup;
+  if (!group) {
+    showToast('No booking details available to copy');
+    return;
+  }
+
+  const customerName = group.customer_name || group.customer || 'Customer';
+  const bookingReference = group.reference_code || group.reference || 'N/A';
+  const totalAmount = group.totalAmount || (group.bookings || []).reduce((sum, booking) => {
+    return sum + (parseFloat(booking.price) || parseFloat(booking.rate) || 0);
+  }, 0);
+  const totalDue = '₱' + totalAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+  const sortTime = (timeStr) => {
+    const match = timeStr.match(/^(\d+)(?::(\d+))?\s*(AM|PM)/i);
+    if (!match) return 0;
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2] ? parseInt(match[2], 10) : 0;
+    const meridiem = match[3].toUpperCase();
+    if (meridiem === 'PM' && hours !== 12) hours += 12;
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+
+  const dateGroups = (group.bookings || []).reduce((acc, booking) => {
+    const date = booking.booking_date || 'N/A';
+    const courtName = booking.court || booking.court_name || 'Court';
+    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
+
+    acc[date] = acc[date] || {};
+    acc[date][courtName] = acc[date][courtName] || new Set();
+    acc[date][courtName].add(timeSlot);
+
+    return acc;
+  }, {});
+
+  const formattedDateGroups = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b)).map(date => {
+    const formattedDate = isNaN(new Date(date).getTime()) ? date : new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const courtLines = Object.entries(dateGroups[date]).map(([courtName, timeSet]) => {
+      const times = Array.from(timeSet).sort((a, b) => sortTime(a) - sortTime(b));
+      const timeLines = times.map(timeSlot => `• ${timeSlot}`).join('\n');
+      return `**${courtName}**\n${timeLines}`;
+    }).join('\n\n');
+
+    return `📅 ${formattedDate}\n\n${courtLines}`;
+  }).join('\n\n');
+
+  const message = `⏳ PENDING BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for your booking request at Pickle Social - Cebu.\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Amount Due: ${totalDue}\n\n${formattedDateGroups}\n\n⚠️ Status: PENDING PAYMENT CONFIRMATION\n\nTo confirm your reservation, please send your GCash payment receipt together with your booking reference number via Messenger.\n\nYour selected time slots will remain reserved while awaiting payment verification.\n\nThank you, and we look forward to seeing you on the court! 🏓`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(message).then(() => {
+      showToast('Pending message copied');
+    }).catch(() => {
+      prompt('Copy the text below for Messenger:', message);
+    });
+  } else {
+    prompt('Copy the text below for Messenger:', message);
+  }
+}
+
+function previousPage() {
   if (currentPage > 1) {
     currentPage--;
     renderTable();
