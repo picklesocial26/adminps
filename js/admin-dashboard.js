@@ -777,6 +777,7 @@ function openBookingDetails(group) {
   document.getElementById('detailsReference').textContent = group.reference_code || 'N/A';
   document.getElementById('detailsCustomer').textContent = group.customer_name || 'N/A';
   document.getElementById('detailsPhone').textContent = formatPhone(group.phone_number || 'N/A');
+  document.getElementById('detailsBookedOn').textContent = group.bookedOn || 'N/A';
   document.getElementById('detailsTotal').textContent = '₱' + group.totalAmount.toLocaleString();
   document.getElementById('detailsStatus').textContent = group.status || 'pending';
 
