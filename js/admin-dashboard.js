@@ -1,4 +1,4 @@
-﻿// admin-dashboard.js
+// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -664,7 +664,10 @@ function updateEarnings() {
   document.getElementById('monthlyEarnings').textContent = '₱' + monthlyEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('monthlyCount').textContent = `${monthlyBookings.length} booking${monthlyBookings.length !== 1 ? 's' : ''}`;
 
-  console.log('Earnings updated:', { todayEarnings, weeklyEarnings, monthlyEarnings, selectedDate: formatDateKey(selectedDate), weekStart: formatDateKey(weekStart), weekEnd: formatDateKey(weekEnd), monthStart: formatDateKey(monthStart), monthEnd: formatDateKey(monthEnd) });
+  document.getElementById('pendingAmount').textContent = '₱' + pendingAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('pendingCount').textContent = `${pendingBookings.length} booking${pendingBookings.length !== 1 ? 's' : ''}`;
+
+  console.log('Earnings updated:', { todayEarnings, weeklyEarnings, monthlyEarnings, pendingAmount, pendingCount: pendingBookings.length, selectedDate: formatDateKey(selectedDate), weekStart: formatDateKey(weekStart), weekEnd: formatDateKey(weekEnd), monthStart: formatDateKey(monthStart), monthEnd: formatDateKey(monthEnd) });
 }
 
 const earningsModalPassword = 'picklesocial26';
