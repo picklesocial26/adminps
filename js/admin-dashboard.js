@@ -564,11 +564,14 @@ function formatPhone(phone) {
 
 // Update earnings cards
 function updateEarnings() {
-  // Get date filter if set, otherwise use today's date
+  // Use the earnings modal date if set, otherwise fallback to the filter date or today
+  const earningsDateInput = document.getElementById('earningsDate');
   const dateFromInput = document.getElementById('filterFrom');
   let selectedDate;
   
-  if (dateFromInput?.value) {
+  if (earningsDateInput?.value) {
+    selectedDate = new Date(earningsDateInput.value);
+  } else if (dateFromInput?.value) {
     selectedDate = new Date(dateFromInput.value);
   } else {
     selectedDate = new Date();
@@ -674,12 +677,23 @@ function submitEarningsPassword() {
 }
 
 function openEarningsModal() {
+  const earningsDateInput = document.getElementById('earningsDate');
+  if (earningsDateInput && !earningsDateInput.value) {
+    earningsDateInput.value = formatDateKey(new Date());
+  }
   updateEarnings();
   document.getElementById('earningsModal').classList.add('open');
 }
 
 function closeEarningsModal() {
   document.getElementById('earningsModal').classList.remove('open');
+}
+
+function setEarningsDateToToday() {
+  const earningsDateInput = document.getElementById('earningsDate');
+  if (!earningsDateInput) return;
+  earningsDateInput.value = formatDateKey(new Date());
+  updateEarnings();
 }
 
 // Format date to YYYY-MM-DD

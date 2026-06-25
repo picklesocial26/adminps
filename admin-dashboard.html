@@ -269,6 +269,13 @@
       <button class="modal-close" onclick="closeEarningsModal()">×</button>
     </div>
     <div class="modal-body">
+      <div class="form-group earnings-date-toggle">
+        <label for="earningsDate">Reference Date</label>
+        <div class="date-toggle-row">
+          <input type="date" id="earningsDate" onchange="updateEarnings()">
+          <button type="button" class="btn-secondary" onclick="setEarningsDateToToday()">Today</button>
+        </div>
+      </div>
       <div class="summary-grid">
         <div class="summary-card">
           <div class="summary-label">Today's Earnings</div>

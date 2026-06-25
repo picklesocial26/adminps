@@ -596,6 +596,18 @@ main {
   gap: 16px;
 }
 
+.earnings-date-toggle .date-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.earnings-date-toggle .date-toggle-row input[type="date"] {
+  flex: 1;
+  min-width: 160px;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
