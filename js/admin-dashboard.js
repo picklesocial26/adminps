@@ -106,6 +106,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load initial data
     await loadBookings();
     updateEarnings();
+
+    setInterval(async () => {
+      if (!supabaseClient || allBookings.length === 0) return;
+      const expiredUpdated = await updateExpiredBookings(allBookings);
+      if (expiredUpdated) {
+        await loadBookings();
+      }
+    }, 60000);
   } catch (err) {
     console.error('Initialization error:', err);
     showToast('Failed to connect to database');
@@ -137,7 +145,11 @@ async function loadBookings() {
     console.log('Loaded bookings:', allBookings);
     
     // Check and update expired bookings
-    await updateExpiredBookings(allBookings);
+    const expiredUpdated = await updateExpiredBookings(allBookings);
+    if (expiredUpdated) {
+      await loadBookings();
+      return;
+    }
     
     applyFilters();
   } catch (err) {
@@ -156,26 +168,44 @@ async function updateExpiredBookings(bookings) {
       // Only check pending bookings
       if (booking.status !== 'pending') continue;
 
-      const bookingDate = booking.booking_date;
-      const timeSlot = booking.time_slot || booking.booking_time || '';
+      let shouldExpire = false;
 
-      if (!bookingDate) continue;
-
-      // Parse booking date and time
-      // Assuming date format is YYYY-MM-DD and time format is HH:MM or HH:MM:SS
-      let bookingDateTime;
-      
-      if (timeSlot) {
-        // Combine date and time
-        bookingDateTime = new Date(`${bookingDate}T${timeSlot}`);
-      } else {
-        // If no time slot, set to end of day
-        bookingDateTime = new Date(bookingDate);
-        bookingDateTime.setHours(23, 59, 59);
+      if (booking.created_at) {
+        const createdAt = new Date(booking.created_at);
+        if (!isNaN(createdAt.getTime())) {
+          const pendingTimeout = 30 * 60 * 1000; // 30 minutes
+          if (now - createdAt >= pendingTimeout) {
+            shouldExpire = true;
+          }
+        }
       }
 
-      // Check if booking has passed
-      if (bookingDateTime < now) {
+      if (!shouldExpire) {
+        const bookingDate = booking.booking_date;
+        const timeSlot = booking.time_slot || booking.booking_time || '';
+
+        if (!bookingDate) continue;
+
+        // Parse booking date and time
+        // Assuming date format is YYYY-MM-DD and time format is HH:MM or HH:MM:SS
+        let bookingDateTime;
+        
+        if (timeSlot) {
+          // Combine date and time
+          bookingDateTime = new Date(`${bookingDate}T${timeSlot}`);
+        } else {
+          // If no time slot, set to end of day
+          bookingDateTime = new Date(bookingDate);
+          bookingDateTime.setHours(23, 59, 59);
+        }
+
+        // Expire a pending booking if its target time has passed
+        if (bookingDateTime < now) {
+          shouldExpire = true;
+        }
+      }
+
+      if (shouldExpire) {
         expiredIds.push(booking.id);
       }
     }
@@ -191,11 +221,13 @@ async function updateExpiredBookings(bookings) {
         console.error('Error updating expired bookings:', error);
       } else {
         console.log(`Updated ${expiredIds.length} bookings to expired status`);
+        return true;
       }
     }
   } catch (err) {
     console.error('Error checking for expired bookings:', err);
   }
+  return false;
 }
 
 // Apply filters and render table
@@ -311,18 +343,22 @@ function renderTable() {
     actionCell.appendChild(editBtn);
     actionCell.appendChild(copyBtn);
     actionCell.appendChild(detailsBtn);
-    if (group.status === 'pending') {
-      const confirmBtn = document.createElement('button');
-      confirmBtn.className = 'action-btn confirm-btn';
-      confirmBtn.textContent = 'Confirm';
-      confirmBtn.title = 'Confirm booking and send Messenger notification';
-      confirmBtn.onclick = () => confirmBookingViaMessenger(group);
-      actionCell.appendChild(confirmBtn);
+    if (group.status === 'pending' || group.status === 'expired') {
+      if (group.status === 'pending') {
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'action-btn confirm-btn';
+        confirmBtn.textContent = 'Confirm';
+        confirmBtn.title = 'Confirm booking and send Messenger notification';
+        confirmBtn.onclick = () => confirmBookingViaMessenger(group);
+        actionCell.appendChild(confirmBtn);
+      }
 
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'action-btn delete-btn';
       deleteBtn.textContent = 'Delete';
-      deleteBtn.title = 'Delete this pending booking group';
+      deleteBtn.title = group.status === 'pending'
+        ? 'Delete this pending booking group'
+        : 'Delete this expired booking group';
       deleteBtn.onclick = () => deleteBookingGroup(group);
       actionCell.appendChild(deleteBtn);
     }
@@ -598,10 +634,52 @@ function updateEarnings() {
   document.getElementById('monthlyEarnings').textContent = '₱' + monthlyEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('monthlyCount').textContent = `${monthlyBookings.length} booking${monthlyBookings.length !== 1 ? 's' : ''}`;
 
-  document.getElementById('pendingAmount').textContent = '₱' + pendingAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  document.getElementById('pendingCount').textContent = `${pendingBookings.length} booking${pendingBookings.length !== 1 ? 's' : ''}`;
+  console.log('Earnings updated:', { todayEarnings, weeklyEarnings, monthlyEarnings, selectedDate: formatDateKey(selectedDate), weekStart: formatDateKey(weekStart), weekEnd: formatDateKey(weekEnd), monthStart: formatDateKey(monthStart), monthEnd: formatDateKey(monthEnd) });
+}
 
-  console.log('Earnings updated:', { todayEarnings, weeklyEarnings, monthlyEarnings, pendingAmount, selectedDate: formatDateKey(selectedDate), weekStart: formatDateKey(weekStart), weekEnd: formatDateKey(weekEnd), monthStart: formatDateKey(monthStart), monthEnd: formatDateKey(monthEnd) });
+const earningsModalPassword = 'picklesocial26';
+
+function openEarningsModalWithPassword() {
+  const modal = document.getElementById('earningsPasswordModal');
+  const input = document.getElementById('earningsPasswordInput');
+  if (!modal || !input) {
+    openEarningsModal();
+    return;
+  }
+
+  input.value = '';
+  modal.classList.add('open');
+  setTimeout(() => input.focus(), 120);
+}
+
+function closeEarningsPasswordModal() {
+  const modal = document.getElementById('earningsPasswordModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function submitEarningsPassword() {
+  const input = document.getElementById('earningsPasswordInput');
+  if (!input) return false;
+
+  if (input.value.trim() === earningsModalPassword) {
+    closeEarningsPasswordModal();
+    openEarningsModal();
+  } else {
+    showToast('Incorrect password');
+    input.value = '';
+    input.focus();
+  }
+
+  return false;
+}
+
+function openEarningsModal() {
+  updateEarnings();
+  document.getElementById('earningsModal').classList.add('open');
+}
+
+function closeEarningsModal() {
+  document.getElementById('earningsModal').classList.remove('open');
 }
 
 // Format date to YYYY-MM-DD
@@ -1018,14 +1096,14 @@ async function deleteBooking(booking) {
 }
 
 async function deleteBookingGroup(group) {
-  const pendingIds = group.bookings.filter(b => b.status === 'pending').map(b => b.id);
-  if (pendingIds.length === 0) {
-    showToast('No pending bookings in this group to delete');
+  const deletableIds = group.bookings.filter(b => ['pending', 'expired'].includes(b.status)).map(b => b.id);
+  if (deletableIds.length === 0) {
+    showToast('No pending or expired bookings in this group to delete');
     return;
   }
 
   const confirmed = confirm(
-    `Are you sure you want to delete ${pendingIds.length} pending booking(s) for ${group.customer_name} (${group.reference_code})? This cannot be undone.`
+    `Are you sure you want to delete ${deletableIds.length} pending/expired booking(s) for ${group.customer_name} (${group.reference_code})? This cannot be undone.`
   );
   if (!confirmed) return;
 

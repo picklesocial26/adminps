@@ -49,34 +49,23 @@
           <option value="cancelled">Cancelled</option>
           <option value="expired">Expired</option>
         </select>
-        <button class="btn-secondary" onclick="downloadCsv()">Export CSV</button>
         <button class="btn-primary" onclick="refreshData()">Refresh</button>
       </div>
     </div>
 
-    <!-- Earnings Summary Cards -->
+    <!-- Earnings Overview Button -->
     <div class="earnings-section">
       <h2>Earnings Overview</h2>
-      <div class="earnings-grid">
-        <div class="earnings-card">
-          <div class="earnings-label">Today's Earnings</div>
-          <div class="earnings-amount" id="todayEarnings">₱0.00</div>
-          <div class="earnings-detail" id="todayCount">0 bookings</div>
-        </div>
-        <div class="earnings-card">
-          <div class="earnings-label">Weekly Earnings</div>
-          <div class="earnings-amount" id="weeklyEarnings">₱0.00</div>
-          <div class="earnings-detail" id="weeklyCount">0 bookings</div>
-        </div>
-        <div class="earnings-card">
-          <div class="earnings-label">Monthly Earnings</div>
-          <div class="earnings-amount" id="monthlyEarnings">₱0.00</div>
-          <div class="earnings-detail" id="monthlyCount">0 bookings</div>
-        </div>
-        <div class="earnings-card accent">
-          <div class="earnings-label">Pending Payments</div>
-          <div class="earnings-amount" id="pendingAmount">₱0.00</div>
-          <div class="earnings-detail" id="pendingCount">0 bookings</div>
+      <div class="earnings-overview-action">
+        <button class="btn-primary" onclick="openEarningsModalWithPassword()">Overview</button>
+      </div>
+      <div class="earnings-overview-note">Click the button to view today's, weekly, and monthly earnings.</div>
+      <div class="earnings-extra">
+        <div class="summary-card pending-summary-card">
+          <div class="summary-label">Pending Bookings</div>
+          <div class="summary-value" id="pendingAmount">₱0.00</div>
+          <div class="summary-label">Pending</div>
+          <div class="summary-value" id="pendingCount">0 bookings</div>
         </div>
       </div>
     </div>
@@ -269,6 +258,62 @@
       <button class="btn-secondary" onclick="closeBookingConfirmationModal()">Close</button>
       <button class="btn-primary" onclick="copyConfirmationText()">Copy to Clipboard</button>
     </div>
+  </div>
+</div>
+
+<!-- Earnings Overview Modal -->
+<div class="modal" id="earningsModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Earnings Overview</h3>
+      <button class="modal-close" onclick="closeEarningsModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">Today's Earnings</div>
+          <div class="summary-value" id="todayEarnings">₱0.00</div>
+          <div class="summary-label">Bookings</div>
+          <div class="summary-value" id="todayCount">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Weekly Earnings</div>
+          <div class="summary-value" id="weeklyEarnings">₱0.00</div>
+          <div class="summary-label">Bookings</div>
+          <div class="summary-value" id="weeklyCount">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Monthly Earnings</div>
+          <div class="summary-value" id="monthlyEarnings">₱0.00</div>
+          <div class="summary-label">Bookings</div>
+          <div class="summary-value" id="monthlyCount">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeEarningsModal()">Close</button>
+      <button class="btn-secondary" onclick="downloadCsv()">Export CSV</button>
+    </div>
+  </div>
+</div>
+
+<!-- Earnings Password Modal -->
+<div class="modal" id="earningsPasswordModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Enter Password</h3>
+      <button class="modal-close" onclick="closeEarningsPasswordModal()">×</button>
+    </div>
+    <form class="modal-body" onsubmit="return submitEarningsPassword()">
+      <div class="form-group">
+        <label for="earningsPasswordInput">Password</label>
+        <input type="password" id="earningsPasswordInput" placeholder="Enter password" autocomplete="off">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeEarningsPasswordModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Submit</button>
+      </div>
+    </form>
   </div>
 </div>
 

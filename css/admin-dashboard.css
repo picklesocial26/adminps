@@ -256,6 +256,28 @@ main {
   color: var(--text-primary);
 }
 
+.earnings-overview-action {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.earnings-overview-note {
+  color: var(--gray-text);
+  font-size: 0.95rem;
+}
+
+.earnings-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pending-summary-card {
+  background: rgba(236, 72, 153, 0.06);
+  border: 1px solid rgba(236, 72, 153, 0.2);
+}
+
 .earnings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
