@@ -76,12 +76,13 @@
       <div class="bookings-toolbar">
         <div>
           <h2>Bookings</h2>
-          <div class="toolbar-copy">Select rows to perform bulk actions: mark paid, cancel, delete.</div>
+          <div class="toolbar-copy">Select rows to perform bulk actions: mark paid, mark unpaid, cancel, delete.</div>
         </div>
         <button class="btn-secondary" onclick="refreshData()">Refresh</button>
         <div class="bulk-actions" id="bulkActionsBar" style="display:none;">
           <span id="selectedCount">0 selected</span>
           <button class="btn-secondary" onclick="bulkMarkPaid()">Mark Paid</button>
+          <button class="btn-secondary" onclick="bulkMarkUnpaid()">Mark Unpaid</button>
           <button class="btn-secondary" onclick="bulkCancel()">Cancel</button>
           <button class="btn-secondary delete-btn" onclick="bulkDelete()">Delete</button>
         </div>
@@ -279,19 +280,19 @@
         </div>
       </div>
       <div class="summary-grid">
-        <div class="summary-card">
+        <div class="summary-card summary-card-today">
           <div class="summary-label">Today's Earnings</div>
           <div class="summary-value" id="todayEarnings">₱0.00</div>
           <div class="summary-label">Bookings</div>
           <div class="summary-value" id="todayCount">0</div>
         </div>
-        <div class="summary-card">
+        <div class="summary-card summary-card-weekly">
           <div class="summary-label">Weekly Earnings</div>
           <div class="summary-value" id="weeklyEarnings">₱0.00</div>
           <div class="summary-label">Bookings</div>
           <div class="summary-value" id="weeklyCount">0</div>
         </div>
-        <div class="summary-card">
+        <div class="summary-card summary-card-monthly">
           <div class="summary-label">Monthly Earnings</div>
           <div class="summary-value" id="monthlyEarnings">₱0.00</div>
           <div class="summary-label">Bookings</div>

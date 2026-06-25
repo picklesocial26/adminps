@@ -457,6 +457,33 @@ async function bulkMarkPaid() {
   await loadBookings();
 }
 
+async function bulkMarkUnpaid() {
+  const selected = getSelectedBookings();
+  if (selected.length === 0) {
+    showToast('No bookings selected');
+    return;
+  }
+
+  const confirmed = confirm(`Mark ${selected.length} booking(s) as unpaid?`);
+  if (!confirmed) return;
+
+  const ids = selected.map(b => b.id);
+  const { error } = await supabaseClient
+    .from('bookings')
+    .update({ status: 'unpaid' })
+    .in('id', ids);
+
+  if (error) {
+    console.error('Bulk mark unpaid error:', error);
+    showToast('Failed to mark unpaid');
+    return;
+  }
+
+  showToast('Bookings marked unpaid');
+  selectedBookingIds.clear();
+  await loadBookings();
+}
+
 async function bulkCancel() {
   const selected = getSelectedBookings();
   if (selected.length === 0) {
@@ -605,21 +632,21 @@ function updateEarnings() {
   // Today's earnings - bookings on the selected date only
   const todayBookings = bookingsToUse.filter(b => {
     const bDate = normalizeDate(b.booking_date);
-    return bDate && bDate.getTime() === selectedDateNormalized.getTime() && b.status !== 'cancelled';
+    return bDate && bDate.getTime() === selectedDateNormalized.getTime() && b.status !== 'cancelled' && b.status !== 'unpaid';
   });
   const todayEarnings = todayBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
 
   // Weekly earnings - Sunday to Saturday of the selected week
   const weeklyBookings = bookingsToUse.filter(b => {
     const bDate = normalizeDate(b.booking_date);
-    return bDate && bDate >= weekStart && bDate <= weekEnd && b.status !== 'cancelled';
+    return bDate && bDate >= weekStart && bDate <= weekEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
   });
   const weeklyEarnings = weeklyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
 
   // Monthly earnings - all bookings in the month
   const monthlyBookings = bookingsToUse.filter(b => {
     const bDate = normalizeDate(b.booking_date);
-    return bDate && bDate >= monthStart && bDate <= monthEnd && b.status !== 'cancelled';
+    return bDate && bDate >= monthStart && bDate <= monthEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
   });
   const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
 
