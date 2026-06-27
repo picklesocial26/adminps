@@ -1029,7 +1029,9 @@ main {
   }
 
   .schedule-grid {
-    grid-template-columns: 120px repeat(1, minmax(0, 1fr));
+    grid-template-columns: 120px repeat(2, minmax(0, 1fr));
+    overflow-x: auto;
+    min-width: 100%;
   }
 
   .schedule-cell {
@@ -1080,7 +1082,9 @@ main {
   }
 
   .schedule-grid {
-    grid-template-columns: 100px 1fr;
+    grid-template-columns: 100px repeat(2, minmax(0, 1fr));
+    overflow-x: auto;
+    min-width: 100%;
   }
 
   .schedule-cell {
@@ -1252,7 +1256,9 @@ main {
   }
 
   .schedule-grid {
-    grid-template-columns: 100px 1fr;
+    grid-template-columns: 100px repeat(2, minmax(0, 1fr));
+    overflow-x: auto;
+    min-width: 100%;
   }
 
   .calendar-date-controls {
