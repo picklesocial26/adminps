@@ -247,13 +247,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       .substring(0, 2);
   }
 
-  // Helper function to get remaining time for pending slots (30 mins)
+  // Helper function to get remaining time for pending slots (60 mins)
   function getRemainingTime(timestamp) {
     const now = Date.now();
     const elapsed = now - timestamp;
-    const thirtyMins = 30 * 60 * 1000;
-    if (elapsed >= thirtyMins) return '0:00';
-    const remaining = thirtyMins - elapsed;
+    const sixtyMins = 60 * 60 * 1000;
+    if (elapsed >= sixtyMins) return '0:00';
+    const remaining = sixtyMins - elapsed;
     const mins = Math.floor(remaining / 60000);
     const secs = Math.floor((remaining % 60000) / 1000);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -281,9 +281,9 @@ document.addEventListener("DOMContentLoaded", async () => {
               } catch (e) {
                 ts = Date.now();
               }
-              // Only set pending timer if still within 30 minutes window
-              const thirtyMins = 30 * 60 * 1000;
-              if ((Date.now() - ts) < thirtyMins) {
+              // Only set pending timer if still within 60 minutes window
+              const sixtyMins = 60 * 60 * 1000;
+              if ((Date.now() - ts) < sixtyMins) {
                 pendingSlotsWithTimer[key] = ts;
               } else {
                 // expired on backend; ensure no pending marker left
@@ -530,7 +530,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           btn.disabled = true;
         }
         // Check if slot is pending (receipt uploaded, awaiting admin confirmation)
-        else if (pendingSlotsWithTimer[key] && (Date.now() - pendingSlotsWithTimer[key]) < 30 * 60 * 1000) {
+        else if (pendingSlotsWithTimer[key] && (Date.now() - pendingSlotsWithTimer[key]) < 60 * 60 * 1000) {
           btn.classList.add('slot-pending');
           const remaining = getRemainingTime(pendingSlotsWithTimer[key]);
           btn.textContent = `PENDING\n${remaining}`;
@@ -1363,9 +1363,9 @@ Phone: ${firstBooking.phone_number || ''}
     if (previewImg) previewImg.src = '';
     if (removeBtn) removeBtn.style.display = 'none';
     const timerField = document.getElementById('receiptTimer');
-    if (timerField) timerField.textContent = 'Time remaining: 30:00';
+    if (timerField) timerField.textContent = 'Time remaining: 60:00';
 
-    const expiry = Date.now() + 30 * 60 * 1000;
+    const expiry = Date.now() + 60 * 60 * 1000;
     receiptTimerInterval = setInterval(() => {
       const remainingMs = expiry - Date.now();
       if (remainingMs <= 0) {
@@ -1383,7 +1383,7 @@ Phone: ${firstBooking.phone_number || ''}
       clearReceiptModalTimer();
       closeReceiptModal();
       showToast('Payment time expired. Please reopen the receipt upload and try again.');
-    }, 30 * 60 * 1000);
+    }, 60 * 60 * 1000);
 
     document.getElementById('receiptModal').classList.add('open');
   };
@@ -1887,7 +1887,7 @@ Phone: ${firstBooking.phone_number || ''}
   // Update timer display every second
   setInterval(() => {
     const now = Date.now();
-    const thirtyMins = 30 * 60 * 1000;
+    const thirtyMins = 60 * 60 * 1000;
     const fifteenMins = 15 * 60 * 1000;
     let expiredPendingSlots = false;
     
