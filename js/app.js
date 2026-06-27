@@ -259,6 +259,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
+  function isPendingTimerActive(key) {
+    const ts = pendingSlotsWithTimer[key];
+    if (!ts) return false;
+    const now = Date.now();
+    const sixtyMins = 60 * 60 * 1000;
+    if (now - ts >= sixtyMins) {
+      delete pendingSlotsWithTimer[key];
+      return false;
+    }
+    return true;
+  }
+
   // Load booked slots from backend API for a specific dateKey (YYYY-MM-DD)
   async function loadBookedSlotsForDate(dk) {
     bookedSlots = {};
@@ -286,8 +298,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               if ((Date.now() - ts) < sixtyMins) {
                 pendingSlotsWithTimer[key] = ts;
               } else {
-                // expired on backend; ensure no pending marker left
-                if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
+                delete pendingSlotsWithTimer[key];
               }
               return;
             }
@@ -295,7 +306,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             // If booking is expired or cancelled, treat the slot as available.
             // Clear any local pending marker and do not mark as booked.
             if (status === 'expired' || status === 'cancelled') {
-              if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
+              delete pendingSlotsWithTimer[key];
+              if (selectedSlots.has(key)) selectedSlots.delete(key);
               return;
             }
 
@@ -522,6 +534,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // Check if slot is in the past (only for today)
         const pastSlot = isSlotPast(dk, slot);
+        const isPendingActive = isPendingTimerActive(key);
 
         // If the slot is booked in Supabase, mark as booked and show initials
         if (bookedSlots[key]) {
@@ -530,7 +543,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           btn.disabled = true;
         }
         // Check if slot is pending (receipt uploaded, awaiting admin confirmation)
-        else if (pendingSlotsWithTimer[key] && (Date.now() - pendingSlotsWithTimer[key]) < 60 * 60 * 1000) {
+        else if (isPendingActive) {
           btn.classList.add('slot-pending');
           const remaining = getRemainingTime(pendingSlotsWithTimer[key]);
           btn.textContent = `PENDING\n${remaining}`;
