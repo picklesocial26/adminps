@@ -1015,6 +1015,27 @@ main {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .calendar-modal-content {
+    max-width: 100%;
+  }
+
+  .calendar-date-controls {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .calendar-date-controls input[type="date"] {
+    width: 220px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: 120px repeat(1, minmax(0, 1fr));
+  }
+
+  .schedule-cell {
+    min-height: 60px;
+  }
+
   .header-controls {
     width: 100%;
     flex-direction: column;
@@ -1040,6 +1061,45 @@ main {
 }
 
 @media (max-width: 640px) {
+  main {
+    padding: 16px 12px 60px;
+  }
+
+  .calendar-modal-content {
+    max-width: 100%;
+  }
+
+  .calendar-date-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .calendar-date-controls input[type="date"] {
+    width: 100%;
+    max-width: 240px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: 100px 1fr;
+  }
+
+  .schedule-cell {
+    min-height: 54px;
+    padding: 8px 10px;
+  }
+
+  .slot-title {
+    font-size: 0.9rem;
+  }
+
+  .slot-subtitle {
+    font-size: 0.78rem;
+  }
+
+  .calendar-detail-card {
+    padding: 14px;
+  }
+
   main {
     padding: 16px 12px 60px;
   }
