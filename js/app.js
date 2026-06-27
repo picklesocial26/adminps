@@ -292,9 +292,23 @@ document.addEventListener("DOMContentLoaded", async () => {
               return;
             }
 
-            // Confirmed booking: mark as booked and clear any local pending marker
-            bookedSlots[key] = row.customer_name || 'Unknown';
-            if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
+            // If booking is expired or cancelled, treat the slot as available.
+            // Clear any local pending marker and do not mark as booked.
+            if (status === 'expired' || status === 'cancelled') {
+              if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
+              return;
+            }
+
+            // Confirmed/active booking statuses should reserve the slot.
+            // Treat common reserved statuses as booked; leave other statuses available.
+            const reservedStatuses = new Set(['paid', 'unpaid', 'confirmed', 'completed']);
+            if (reservedStatuses.has(status)) {
+              bookedSlots[key] = row.customer_name || 'Unknown';
+              if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
+            } else {
+              // For any unknown or non-reserving status, ensure it's not left pending locally
+              if (pendingSlotsWithTimer[key]) delete pendingSlotsWithTimer[key];
+            }
           }
         });
       }
