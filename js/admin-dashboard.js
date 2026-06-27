@@ -1,4 +1,4 @@
-﻿// admin-dashboard.js
+// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -189,7 +189,7 @@ async function updateExpiredBookings(bookings) {
       if (booking.created_at) {
         const createdAt = new Date(booking.created_at);
         if (!isNaN(createdAt.getTime())) {
-          const pendingTimeout = 30 * 60 * 1000; // 30 minutes
+          const pendingTimeout = 60 * 60 * 1000; // 60 minutes
           if (now - createdAt >= pendingTimeout) {
             shouldExpire = true;
           }
