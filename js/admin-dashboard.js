@@ -1,4 +1,4 @@
-// admin-dashboard.js
+﻿// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -8,6 +8,8 @@ const itemsPerPage = 20;
 let currentEditingBooking = null;
 let selectedBookingIds = new Set();
 let currentBookingDetailsGroup = null;
+let calendarViewDate = new Date();
+let selectedCalendarDate = null;
 
 function getBookingGroupKey(booking) {
   if (booking.reference_code) return booking.reference_code;
@@ -165,6 +167,7 @@ async function loadBookings() {
     }
     
     applyFilters();
+    refreshCalendarView();
   } catch (err) {
     console.error('Error loading bookings:', err);
     showToast('Failed to load bookings');
@@ -614,6 +617,229 @@ function formatDateTime(value) {
     hour: 'numeric',
     minute: '2-digit'
   });
+}
+
+function getBookingTimeValue(timeValue) {
+  if (!timeValue) return Number.MAX_SAFE_INTEGER;
+  const rawValue = String(timeValue).trim().toUpperCase();
+  const match = rawValue.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const meridiem = match[3];
+
+  if (meridiem === 'PM' && hours !== 12) hours += 12;
+  if (meridiem === 'AM' && hours === 12) hours = 0;
+
+  return hours * 60 + minutes;
+}
+
+function getBookingsForDate(dateKey) {
+  return allBookings
+    .filter(booking => (booking.booking_date || booking.date || '').toString() === dateKey)
+    .sort((a, b) => {
+      const timeA = getBookingTimeValue(a.time_slot || a.booking_time || '');
+      const timeB = getBookingTimeValue(b.time_slot || b.booking_time || '');
+      return timeA - timeB;
+    });
+}
+
+function refreshCalendarView() {
+  const modal = document.getElementById('calendarModal');
+  if (modal && modal.classList.contains('open')) {
+    renderScheduleModal();
+  }
+}
+
+function getScheduleCourts() {
+  const courts = new Set();
+  allBookings.forEach(booking => {
+    const court = booking.court || booking.court_name || null;
+    if (court) courts.add(court);
+  });
+  if (courts.size === 0) {
+    courts.add('Court 1');
+    courts.add('Court 2');
+  }
+  return Array.from(courts);
+}
+
+function onScheduleDateChange(event) {
+  const input = event.target;
+  if (!input || !input.value) return;
+  selectedCalendarDate = input.value;
+  renderScheduleModal();
+}
+
+function parseBookingHour(timeValue) {
+  if (!timeValue) return null;
+  const raw = String(timeValue).trim();
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
+  if (!match) return null;
+
+  let hour = parseInt(match[1], 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const ampm = match[3] ? match[3].toUpperCase() : null;
+
+  if (ampm === 'PM' && hour !== 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+  if (hour === 24) hour = 0;
+
+  if (minutes >= 30) {
+    // Still map to the slot start hour.
+  }
+
+  if (hour >= 0 && hour <= 23) {
+    return hour;
+  }
+  return null;
+}
+
+function getBookingInitials(name) {
+  if (!name) return '??';
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '??';
+  if (words.length === 1) return words[0].substring(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+function renderScheduleModal() {
+  const grid = document.getElementById('scheduleGrid');
+  const dateInput = document.getElementById('scheduleDateInput');
+  const detailTitle = document.getElementById('scheduleDayDetailTitle');
+  const detailSummary = document.getElementById('scheduleDayDetailSummary');
+  const detailList = document.getElementById('scheduleDayDetailList');
+
+  if (!grid || !dateInput || !detailTitle || !detailSummary || !detailList) return;
+
+  const activeDate = selectedCalendarDate ? new Date(selectedCalendarDate) : new Date();
+  if (isNaN(activeDate.getTime())) {
+    selectedCalendarDate = formatDateKey(new Date());
+  }
+
+  dateInput.value = selectedCalendarDate;
+  const courts = getScheduleCourts();
+
+  const bookings = getBookingsForDate(selectedCalendarDate);
+  const bookingsByCourtHour = {};
+  courts.forEach(court => { bookingsByCourtHour[court] = {}; });
+  bookings.forEach(booking => {
+    const courtName = booking.court || booking.court_name || 'Court';
+    const hour = parseBookingHour(booking.time_slot || booking.booking_time || '');
+    if (hour === null) return;
+    const list = bookingsByCourtHour[courtName] || {};
+    list[hour] = list[hour] || [];
+    list[hour].push(booking);
+    bookingsByCourtHour[courtName] = list;
+  });
+
+  grid.innerHTML = '';
+  const headerRow = document.createElement('div');
+  headerRow.className = 'schedule-row';
+  const headerTime = document.createElement('div');
+  headerTime.className = 'schedule-cell header';
+  headerTime.textContent = 'Time';
+  headerRow.appendChild(headerTime);
+  courts.forEach(court => {
+    const cell = document.createElement('div');
+    cell.className = 'schedule-cell header';
+    cell.textContent = court;
+    headerRow.appendChild(cell);
+  });
+  grid.appendChild(headerRow);
+
+  for (let hour = 0; hour < 24; hour++) {
+    const row = document.createElement('div');
+    row.className = 'schedule-row';
+    const timeCell = document.createElement('div');
+    timeCell.className = 'schedule-cell time-label';
+    timeCell.textContent = formatScheduleHour(hour);
+    row.appendChild(timeCell);
+
+    courts.forEach(court => {
+      const slotCell = document.createElement('button');
+      slotCell.type = 'button';
+      slotCell.className = 'schedule-cell slot-cell';
+      const slotBookings = bookingsByCourtHour[court]?.[hour] || [];
+      if (slotBookings.length === 0) {
+        slotCell.classList.add('slot-empty');
+        slotCell.innerHTML = '<span class="slot-subtitle">Available</span>';
+      } else {
+        slotCell.classList.add('slot-booked');
+        const initials = slotBookings.map(b => getBookingInitials(b.customer_name || b.customer || 'Guest')).join(', ');
+        slotCell.innerHTML = `
+          <div class="slot-initials">${initials}</div>
+          <div class="slot-title">${slotBookings[0].customer_name || 'Booked'}</div>
+          <div class="slot-subtitle">${slotBookings.length > 1 ? `${slotBookings.length} bookings` : (slotBookings[0].time_slot || slotBookings[0].booking_time || 'Booked')}</div>
+        `;
+      }
+      slotCell.onclick = () => {
+        selectedCalendarDate = formatDateKey(new Date(selectedCalendarDate));
+        renderScheduleModal();
+      };
+      row.appendChild(slotCell);
+    });
+
+    grid.appendChild(row);
+  }
+
+  detailTitle.textContent = new Date(selectedCalendarDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  detailSummary.textContent = bookings.length === 0 ? 'No bookings' : `${bookings.length} booking${bookings.length === 1 ? '' : 's'}`;
+  detailList.innerHTML = '';
+
+  if (bookings.length === 0) {
+    detailList.innerHTML = '<div class="empty-list">No bookings found for this day.</div>';
+  } else {
+    bookings.forEach(booking => {
+      const item = document.createElement('div');
+      item.className = 'calendar-detail-item';
+      const info = document.createElement('div');
+      info.innerHTML = `
+        <strong>${booking.customer_name || 'Unknown'}</strong>
+        <div class="calendar-detail-meta">${booking.court || booking.court_name || 'Court'} · ${booking.time_slot || booking.booking_time || 'TBD'}</div>
+        <div class="calendar-detail-meta">Ref: ${booking.reference_code || 'N/A'} · ₱${(booking.price || booking.rate || 0).toLocaleString()}</div>
+      `;
+      const badge = document.createElement('span');
+      badge.className = `status-badge ${booking.status || 'pending'}`;
+      badge.textContent = booking.status || 'pending';
+      item.appendChild(info);
+      item.appendChild(badge);
+      detailList.appendChild(item);
+    });
+  }
+}
+
+function formatScheduleHour(hour) {
+  const suffix = hour < 12 ? 'AM' : 'PM';
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+  const endHour = (hour + 1) % 24;
+  const endSuffix = endHour < 12 ? 'AM' : 'PM';
+  const displayEnd = endHour % 12 === 0 ? 12 : endHour % 12;
+  return `${displayHour}${suffix} - ${displayEnd}${endSuffix}`;
+}
+
+function openCalendarModal(date = new Date()) {
+  selectedCalendarDate = formatDateKey(date);
+  document.getElementById('calendarModal').classList.add('open');
+  renderScheduleModal();
+}
+
+function closeCalendarModal() {
+  document.getElementById('calendarModal').classList.remove('open');
+}
+
+function changeScheduleDay(step) {
+  const current = new Date(selectedCalendarDate || formatDateKey(new Date()));
+  current.setDate(current.getDate() + step);
+  selectedCalendarDate = formatDateKey(current);
+  renderScheduleModal();
+}
+
+function goToScheduleToday() {
+  const today = new Date();
+  selectedCalendarDate = formatDateKey(today);
+  renderScheduleModal();
 }
 
 // Update earnings cards
@@ -1517,6 +1743,7 @@ document.addEventListener('keydown', (e) => {
     closeReceiptViewer();
     closeBookingDetails();
     closeTodayModal();
+    closeCalendarModal();
   }
 });
 

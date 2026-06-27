@@ -50,6 +50,7 @@
           <option value="cancelled">Cancelled</option>
           <option value="expired">Expired</option>
         </select>
+        <button class="btn-secondary" onclick="openCalendarModal()">Calendar</button>
         <button class="btn-primary" onclick="refreshData()">Refresh</button>
       </div>
     </div>
@@ -366,6 +367,38 @@
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeTodayModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Booking Schedule Modal -->
+<div class="modal" id="calendarModal">
+  <div class="modal-content calendar-modal-content">
+    <div class="modal-header">
+      <h3>Booking Schedule</h3>
+      <button class="modal-close" onclick="closeCalendarModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="calendar-toolbar">
+        <div class="calendar-date-controls">
+          <button class="btn-secondary" type="button" onclick="changeScheduleDay(-1)">←</button>
+          <input type="date" id="scheduleDateInput" onchange="onScheduleDateChange(event)">
+          <button class="btn-secondary" type="button" onclick="changeScheduleDay(1)">→</button>
+          <button class="btn-secondary" type="button" onclick="goToScheduleToday()">Today</button>
+        </div>
+        <button class="btn-primary" type="button" onclick="renderScheduleModal()">Refresh</button>
+      </div>
+      <div id="scheduleGrid" class="schedule-grid"></div>
+      <div class="calendar-detail-card">
+        <div class="calendar-detail-header">
+          <h4 id="scheduleDayDetailTitle">Selected day</h4>
+          <div id="scheduleDayDetailSummary" class="calendar-day-summary">0 bookings</div>
+        </div>
+        <div id="scheduleDayDetailList" class="modal-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeCalendarModal()">Close</button>
     </div>
   </div>
 </div>
