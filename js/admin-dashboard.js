@@ -448,6 +448,44 @@ function getSelectedBookings() {
   return allBookings.filter(booking => selectedBookingIds.has(booking.id));
 }
 
+async function setBookingsPending(ids) {
+  if (!ids || ids.length === 0) {
+    return { error: null };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabaseClient
+    .from('bookings')
+    .update({ status: 'pending', created_at: now })
+    .in('id', ids);
+
+  return { error };
+}
+
+async function bulkMarkPending() {
+  const selected = getSelectedBookings();
+  if (selected.length === 0) {
+    showToast('No bookings selected');
+    return;
+  }
+
+  const confirmed = confirm(`Mark ${selected.length} booking(s) as pending and restart their timer?`);
+  if (!confirmed) return;
+
+  const ids = selected.map(b => b.id);
+  const { error } = await setBookingsPending(ids);
+
+  if (error) {
+    console.error('Bulk mark pending error:', error);
+    showToast('Failed to mark pending');
+    return;
+  }
+
+  showToast('Bookings marked pending');
+  selectedBookingIds.clear();
+  await loadBookings();
+}
+
 async function bulkMarkPaid() {
   const selected = getSelectedBookings();
   if (selected.length === 0) {
@@ -1043,10 +1081,7 @@ function openBookingDetails(group) {
       pendingBtn.className = 'action-btn';
       pendingBtn.textContent = 'Mark Pending';
       pendingBtn.onclick = async () => {
-        const { error } = await supabaseClient
-          .from('bookings')
-          .update({ status: 'pending' })
-          .eq('id', booking.id);
+        const { error } = await setBookingsPending([booking.id]);
         if (error) {
           showToast('Failed to mark as pending');
         } else {

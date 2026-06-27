@@ -77,11 +77,12 @@
       <div class="bookings-toolbar">
         <div>
           <h2>Bookings</h2>
-          <div class="toolbar-copy">Select rows to perform bulk actions: mark paid, mark unpaid, cancel, delete.</div>
+          <div class="toolbar-copy">Select rows to perform bulk actions: mark pending, mark paid, mark unpaid, cancel, delete.</div>
         </div>
         <button class="btn-secondary" onclick="refreshData()">Refresh</button>
         <div class="bulk-actions" id="bulkActionsBar" style="display:none;">
           <span id="selectedCount">0 selected</span>
+          <button class="btn-secondary" onclick="bulkMarkPending()">Mark Pending</button>
           <button class="btn-secondary" onclick="bulkMarkPaid()">Mark Paid</button>
           <button class="btn-secondary" onclick="bulkMarkUnpaid()">Mark Unpaid</button>
           <button class="btn-secondary" onclick="bulkCancel()">Cancel</button>

@@ -1875,16 +1875,18 @@ Phone: ${firstBooking.phone_number || ''}
     const now = Date.now();
     const thirtyMins = 30 * 60 * 1000;
     const fifteenMins = 15 * 60 * 1000;
+    let expiredPendingSlots = false;
     
     // Update pending slots timer (30 minutes)
     Object.keys(pendingSlotsWithTimer).forEach(key => {
       if (now - pendingSlotsWithTimer[key] >= thirtyMins) {
         delete pendingSlotsWithTimer[key];
+        expiredPendingSlots = true;
       }
     });
 
-    // Re-render pending slots every second so the timer countdown stays live.
-    if (Object.keys(pendingSlotsWithTimer).length > 0) {
+    // Re-render when pending slots are still counting down or when an expiry just occurred.
+    if (expiredPendingSlots || Object.keys(pendingSlotsWithTimer).length > 0) {
       renderTable();
     }
 
