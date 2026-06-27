@@ -76,6 +76,37 @@ function groupBookings(bookings) {
   });
 }
 
+function parseSlotStartDateTime(bookingDate, timeSlot) {
+  if (!bookingDate) return null;
+  const datePart = bookingDate.trim();
+  let timePart = '';
+
+  if (typeof timeSlot === 'string' && timeSlot.trim()) {
+    // Use the first range token as the start time, e.g. "1:00 PM - 2:00 PM"
+    timePart = timeSlot.split('-')[0].trim();
+  }
+
+  if (!timePart) {
+    const fallback = new Date(`${datePart}T00:00:00`);
+    return isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  const match = timePart.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/);
+  if (!match) return null;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const period = match[3].toUpperCase();
+
+  if (period === 'AM' && hours === 12) hours = 0;
+  if (period === 'PM' && hours !== 12) hours += 12;
+
+  const bookingDateTime = new Date(`${datePart}T00:00:00`);
+  if (isNaN(bookingDateTime.getTime())) return null;
+  bookingDateTime.setHours(hours, minutes, 0, 0);
+  return bookingDateTime;
+}
+
 // Check authentication
 function checkAuthentication() {
   const token = sessionStorage.getItem('adminToken');
@@ -128,7 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (expiredUpdated) {
         await loadBookings();
       }
-    }, 60000);
+    }, 15000);
   } catch (err) {
     console.error('Initialization error:', err);
     showToast('Failed to connect to database');
@@ -202,22 +233,12 @@ async function updateExpiredBookings(bookings) {
 
         if (!bookingDate) continue;
 
-        // Parse booking date and time
-        // Assuming date format is YYYY-MM-DD and time format is HH:MM or HH:MM:SS
-        let bookingDateTime;
-        
-        if (timeSlot) {
-          // Combine date and time
-          bookingDateTime = new Date(`${bookingDate}T${timeSlot}`);
-        } else {
-          // If no time slot, set to end of day
-          bookingDateTime = new Date(bookingDate);
-          bookingDateTime.setHours(23, 59, 59);
-        }
-
-        // Expire a pending booking if its target time has passed
-        if (bookingDateTime < now) {
+        const bookingDateTime = parseSlotStartDateTime(bookingDate, timeSlot);
+        if (bookingDateTime && bookingDateTime < now) {
           shouldExpire = true;
+        } else if (!bookingDateTime) {
+          // If we cannot parse a valid time, still expire after 60 mins from creation
+          // This is handled above by creation time, so do nothing here.
         }
       }
 
