@@ -1,4 +1,4 @@
-// admin-dashboard.js
+﻿// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -616,16 +616,43 @@ async function bulkDelete() {
 }
 
 function downloadCsv() {
-  if (filteredBookings.length === 0) {
-    showToast('No bookings to export');
+  const earningsDateInput = document.getElementById('earningsDate');
+  const dateFromInput = document.getElementById('filterFrom');
+  const selectedDate = earningsDateInput?.value ? new Date(earningsDateInput.value) : (dateFromInput?.value ? new Date(dateFromInput.value) : new Date());
+
+  const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+  const monthEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+  const normalizeDate = (dateStr) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  };
+
+  const bookingsToExport = (Array.isArray(allBookings) ? allBookings : []).filter(b => {
+    const bDate = normalizeDate(b.booking_date);
+    return bDate && bDate >= monthStart && bDate <= monthEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
+  });
+
+  if (bookingsToExport.length === 0) {
+    showToast('No bookings to export for this month');
     return;
   }
 
+  const totalEarn = bookingsToExport.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
+  const formattedTotalEarn = `PHP ${totalEarn.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formattedReferenceDate = selectedDate.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
   const rows = [
+    ['Monthly Earnings Export', ''],
+    ['Reference Date', formattedReferenceDate],
+    ['Total Book:', bookingsToExport.length],
+    ['Total Earn:', formattedTotalEarn],
+    [],
     ['Reference', 'Name', 'Phone', 'Email', 'Court', 'Date', 'Time', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Notes']
   ];
 
-  filteredBookings.forEach(b => {
+  bookingsToExport.forEach(b => {
     rows.push([
       b.reference_code || '',
       b.customer_name || '',
@@ -642,15 +669,79 @@ function downloadCsv() {
     ]);
   });
 
-  const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `bookings_export_${new Date().toISOString().slice(0,10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-  showToast('Export ready');
+  if (typeof XLSX === 'undefined') {
+    showToast('Excel export is unavailable. Please check the XLSX library load.');
+    return;
+  }
+
+  const sheetData = [
+    ['Monthly Earnings Export', ''],
+    ['Reference Date', formattedReferenceDate],
+    ['Total Book:', bookingsToExport.length],
+    ['Total Earn:', formattedTotalEarn],
+    [],
+    ['Reference', 'Name', 'Phone', 'Email', 'Court', 'Date', 'Time', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Notes']
+  ];
+
+  bookingsToExport.forEach(b => {
+    sheetData.push([
+      b.reference_code || '',
+      b.customer_name || '',
+      b.phone_number || '',
+      b.customer_email || b.email || '',
+      b.court || b.court_name || '',
+      b.booking_date || '',
+      b.time_slot || b.booking_time || '',
+      parseFloat(b.price || b.rate || 0) || 0,
+      b.payment_method || '',
+      b.transaction_id || b.transaction || '',
+      b.status || '',
+      b.notes || ''
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  const styleCell = (address, style) => {
+    const cell = ws[address];
+    if (cell) cell.s = Object.assign({}, cell.s || {}, style);
+  };
+
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFFFF' } },
+    fill: { fgColor: { rgb: 'FF4F81BD' } }
+  };
+  const summaryStyle = {
+    font: { bold: true },
+    fill: { fgColor: { rgb: 'FFF2F2F2' } }
+  };
+
+  ['A1', 'B1', 'A2', 'B2', 'A3', 'B3', 'A4', 'B4'].forEach(addr => styleCell(addr, summaryStyle));
+  for (let col = 0; col < 12; col++) {
+    styleCell(XLSX.utils.encode_cell({ c: col, r: 5 }), headerStyle);
+  }
+
+  const amountFormat = '#,##0.00';
+  for (let row = 6; row < sheetData.length; row++) {
+    const amountAddr = XLSX.utils.encode_cell({ c: 7, r: row });
+    const amountCell = ws[amountAddr];
+    if (amountCell) {
+      amountCell.t = 'n';
+      amountCell.z = amountFormat;
+      amountCell.s = Object.assign({}, amountCell.s || {}, { numFmt: amountFormat });
+    }
+  }
+
+  ws['!cols'] = [
+    { wch: 18 }, { wch: 20 }, { wch: 16 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 14 }, { wch: 24 }
+  ];
+
+  const monthName = selectedDate.toLocaleString('en-US', { month: 'long' });
+  const year = selectedDate.getFullYear();
+  const fileName = `${monthName} ${year} Monthly Booking Report.xlsx`;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Report');
+  XLSX.writeFile(wb, fileName);
+  showToast('Monthly Excel export ready');
 }
 
 // Format phone number
