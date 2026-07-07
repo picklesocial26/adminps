@@ -802,6 +802,21 @@ main {
   justify-content: flex-end;
 }
 
+.rate-display {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.rate-hint {
+  color: var(--gray-text);
+  font-size: 0.85rem;
+}
+
 /* Booking Schedule Modal */
 .calendar-modal-content {
   max-width: 1120px;

@@ -51,6 +51,7 @@
           <option value="expired">Expired</option>
         </select>
         <button class="btn-secondary" onclick="openCalendarModal()">Calendar</button>
+        <button class="btn-primary" onclick="openAddBookingModal()">Add Booking</button>
         <button class="btn-primary" onclick="refreshData()">Refresh</button>
       </div>
     </div>
@@ -172,6 +173,63 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
       <button class="btn-primary" onclick="saveBookingChanges()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Booking Modal -->
+<div class="modal" id="addBookingModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Add Booking</h3>
+      <button class="modal-close" onclick="closeAddBookingModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Customer Name</label>
+        <input type="text" id="addBookingCustomerName" placeholder="Enter customer name">
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="text" id="addBookingPhone" placeholder="Enter phone number">
+      </div>
+      <div class="form-group">
+        <label>Booking Date</label>
+        <input type="date" id="addBookingDate" onchange="updateAddBookingRate()">
+      </div>
+      <div class="form-group">
+        <label>Time</label>
+        <input type="text" id="addBookingTime" placeholder="e.g. 11:00 PM or 23:00">
+      </div>
+      <div class="form-group">
+        <label>Court</label>
+        <select id="addBookingCourt">
+          <option value="">Select Court</option>
+          <option value="Court One">Court One</option>
+          <option value="Court Two">Court Two</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="addBookingStatus">
+          <option value="paid">Paid</option>
+          <option value="pending">Pending</option>
+          <option value="unpaid">Unpaid</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Rate</label>
+        <div class="rate-display" id="addBookingRateValue">₱400</div>
+        <div class="rate-hint">Same rate: Weekdays ₱400 · Weekends ₱450</div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="addBookingNotes" rows="3" placeholder="Add any special notes"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeAddBookingModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitAddBooking()">Save Booking</button>
     </div>
   </div>
 </div>
@@ -409,7 +467,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/booking-utils.js"></script>
 <script src="js/admin-dashboard.js"></script>
-
 </body>
 </html>

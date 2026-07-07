@@ -125,8 +125,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
   // Initialize Supabase
-  const SUPABASE_URL = "https://nozisfmqzkeywefrqkok.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk";
+  const supabaseConfig = window.SUPABASE_CONFIG || {};
+  const SUPABASE_URL = supabaseConfig.url || "https://nozisfmqzkeywefrqkok.supabase.co";
+  const SUPABASE_ANON_KEY = supabaseConfig.anonKey || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk";
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    showToast('Supabase configuration missing. Please set window.SUPABASE_CONFIG.');
+    return;
+  }
 
   try {
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -1122,6 +1128,107 @@ function closeEarningsModal() {
   document.getElementById('earningsModal').classList.remove('open');
 }
 
+function openAddBookingModal() {
+  const modal = document.getElementById('addBookingModal');
+  if (!modal) return;
+
+  const dateInput = document.getElementById('addBookingDate');
+  if (dateInput && !dateInput.value) {
+    dateInput.value = formatDateKey(new Date());
+  }
+
+  const customerNameInput = document.getElementById('addBookingCustomerName');
+  const phoneInput = document.getElementById('addBookingPhone');
+  const timeInput = document.getElementById('addBookingTime');
+  const courtSelect = document.getElementById('addBookingCourt');
+  const statusSelect = document.getElementById('addBookingStatus');
+  const notesInput = document.getElementById('addBookingNotes');
+
+  if (customerNameInput) customerNameInput.value = '';
+  if (phoneInput) phoneInput.value = '';
+  if (timeInput) timeInput.value = '';
+  if (courtSelect) courtSelect.value = 'Court One';
+  if (statusSelect) statusSelect.value = 'paid';
+  if (notesInput) notesInput.value = '';
+
+  updateAddBookingRate();
+  modal.classList.add('open');
+  setTimeout(() => customerNameInput?.focus(), 120);
+}
+
+function closeAddBookingModal() {
+  const modal = document.getElementById('addBookingModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function updateAddBookingRate() {
+  const dateInput = document.getElementById('addBookingDate');
+  const rateValue = document.getElementById('addBookingRateValue');
+  if (!dateInput || !rateValue) return;
+
+  const rate = getBookingRateForDate(dateInput.value);
+  rateValue.textContent = `₱${rate}`;
+}
+
+async function submitAddBooking() {
+  if (!supabaseClient) {
+    showToast('Database not connected');
+    return;
+  }
+
+  const customerName = document.getElementById('addBookingCustomerName')?.value?.trim() || '';
+  const phone = document.getElementById('addBookingPhone')?.value?.trim() || '';
+  const bookingDate = document.getElementById('addBookingDate')?.value || '';
+  const bookingTime = document.getElementById('addBookingTime')?.value || '';
+  const timeSlot = bookingTime ? formatTimeInputValue(bookingTime) : '';
+  const court = document.getElementById('addBookingCourt')?.value || '';
+  const status = document.getElementById('addBookingStatus')?.value || 'paid';
+  const notes = document.getElementById('addBookingNotes')?.value?.trim() || '';
+
+  const missing = [];
+  if (!customerName) missing.push('name');
+  if (!phone) missing.push('phone');
+  if (!bookingDate) missing.push('date');
+  if (!timeSlot) missing.push('time');
+  if (!court) missing.push('court');
+
+  if (missing.length > 0) {
+    showToast(`Please fill in ${missing.join(', ')}.`);
+    return;
+  }
+
+  const price = getBookingRateForDate(bookingDate);
+  const referenceCode = `PKL-${Date.now().toString(36).toUpperCase()}`;
+
+  const payload = {
+    reference_code: referenceCode,
+    customer_name: customerName,
+    phone_number: phone,
+    booking_date: bookingDate,
+    time_slot: timeSlot,
+    booking_time: timeSlot,
+    court,
+    court_name: court,
+    status,
+    price,
+    rate: price,
+    notes: notes || null,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const { error } = await supabaseClient.from('bookings').insert([payload]);
+    if (error) throw error;
+
+    showToast('Booking added successfully');
+    closeAddBookingModal();
+    await loadBookings();
+  } catch (error) {
+    console.error('Failed to add booking:', error);
+    showToast('Failed to add booking');
+  }
+}
+
 function setEarningsDateToToday() {
   const earningsDateInput = document.getElementById('earningsDate');
   if (!earningsDateInput) return;
@@ -1130,6 +1237,46 @@ function setEarningsDateToToday() {
 }
 
 // Format date to YYYY-MM-DD
+function formatTimeInputValue(value) {
+  if (!value) return '';
+  const trimmed = value.trim();
+
+  const parseSingleTime = (input) => {
+    const normalized = input.trim().replace(/\s+/g, ' ');
+    const ampmMatch = normalized.match(/^([0-9]{1,2})(?::([0-9]{2}))?\s*(AM|PM)$/i);
+    if (ampmMatch) {
+      let hours = Number(ampmMatch[1]);
+      const minutes = Number(ampmMatch[2] || '00');
+      const suffix = ampmMatch[3].toUpperCase();
+      if (hours === 0) hours = 12;
+      if (hours > 12) hours = hours % 12;
+      return `${hours}:${String(minutes).padStart(2, '0')} ${suffix}`;
+    }
+
+    const twentyFourMatch = normalized.match(/^([0-9]{1,2})(?::([0-9]{2}))?$/);
+    if (twentyFourMatch) {
+      let hours = Number(twentyFourMatch[1]);
+      const minutes = Number(twentyFourMatch[2] || '00');
+      if (hours >= 24 || minutes >= 60) return normalized;
+      const suffix = hours >= 12 ? 'PM' : 'AM';
+      if (hours === 0) hours = 12;
+      else if (hours > 12) hours -= 12;
+      return `${hours}:${String(minutes).padStart(2, '0')} ${suffix}`;
+    }
+
+    return normalized;
+  };
+
+  const rangeMatch = trimmed.match(/^(.+?)\s*-\s*(.+)$/);
+  if (rangeMatch) {
+    const start = parseSingleTime(rangeMatch[1]);
+    const end = parseSingleTime(rangeMatch[2]);
+    return `${start} - ${end}`;
+  }
+
+  return parseSingleTime(trimmed);
+}
+
 function formatDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');

@@ -404,36 +404,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Helper function to check if a slot is in the past
   function isSlotPast(dateKey, slot) {
-    // Only check for past slots on today
-    const selectedDateObj = new Date(selectedDate);
-    const todayObj = new Date(today);
-    const isToday = selectedDateObj.getFullYear() === todayObj.getFullYear() &&
-                    selectedDateObj.getMonth() === todayObj.getMonth() &&
-                    selectedDateObj.getDate() === todayObj.getDate();
-
-    if (!isToday) return false; // Not today, so slot is not past
-
-    // Parse the start time from the slot (e.g., "1:00 AM - 2:00 AM" -> "1:00 AM")
-    const startTimeStr = slot.split(' - ')[0];
-    const [timeStr, period] = startTimeStr.match(/(\d+:\d+)\s(AM|PM)/).slice(1);
-    let [hours, minutes] = timeStr.split(':').map(Number);
-
-    // Convert to 24-hour format
-    if (period === 'AM' && hours === 12) {
-      hours = 0; // 12:XX AM is 00:XX
-    } else if (period === 'PM' && hours !== 12) {
-      hours += 12; // PM times add 12 (except 12 PM)
-    }
-
-    // Create a time object for today at this slot's start time
-    const slotTime = new Date(todayObj);
-    slotTime.setHours(hours, minutes, 0, 0);
-
-    // Current time
-    const now = new Date();
-
-    // Slot is past if its start time is before current time
-    return slotTime <= now;
+    // Past slot labeling no longer blocks selection.
+    return false;
   }
 
   function renderCalendar() {
@@ -471,13 +443,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (isSelected && !isToday) day.classList.add('selected');
       if (isPast) day.classList.add('past');
 
-      if (!isPast) {
-        day.onclick = () => {
-          selectedDate = new Date(viewYear, viewMonth, d);
-          renderCalendar();
-          loadAndRenderTable();
-        };
-      }
+      day.onclick = () => {
+        selectedDate = new Date(viewYear, viewMonth, d);
+        renderCalendar();
+        loadAndRenderTable();
+      };
 
       grid.appendChild(day);
     }
@@ -532,8 +502,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         const btn = document.createElement('button');
         btn.className = 'slot-btn';
 
-        // Check if slot is in the past (only for today)
-        const pastSlot = isSlotPast(dk, slot);
         const isPendingActive = isPendingTimerActive(key);
 
         // If the slot is booked in Supabase, mark as booked and show initials
@@ -548,11 +516,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           const remaining = getRemainingTime(pendingSlotsWithTimer[key]);
           btn.textContent = `PENDING\n${remaining}`;
           btn.style.whiteSpace = 'pre-wrap';
-          btn.disabled = true;
-        } else if (pastSlot) {
-          // Disable past slots
-          btn.classList.add('slot-past');
-          btn.textContent = 'Past';
           btn.disabled = true;
         } else if (selectedSlots.has(key)) {
           btn.classList.add('slot-selected');
