@@ -275,26 +275,26 @@
 
     .booking-slot h4 {
       margin: 0;
-      font-size: 1rem;
+      font-size: 0.94rem;
       color: white;
       letter-spacing: -0.02em;
     }
 
     .booking-slot .slot-meta {
       color: var(--text-secondary);
-      font-size: 0.85rem;
+      font-size: 0.72rem;
       display: grid;
-      gap: 6px;
+      gap: 4px;
     }
 
     .booking-slot .slot-meta span {
       display: block;
-      line-height: 1.4;
+      line-height: 1.3;
     }
 
     .booking-slot .slot-meta span:first-child {
       color: var(--text-primary);
-      font-size: 0.93rem;
+      font-size: 0.84rem;
       font-weight: 600;
     }
 
@@ -334,52 +334,88 @@
       .slot-row,
       .slot-header {
         display: grid;
-        grid-template-columns: 76px minmax(120px, 1fr) minmax(120px, 1fr);
-        gap: 10px;
+        grid-template-columns: 76px minmax(104px, 1fr) minmax(104px, 1fr);
+        gap: 16px;
         min-width: 340px;
       }
       .slot-header {
-        padding: 12px 8px;
-        border-radius: 18px;
+        padding: 10px 8px;
+        border-radius: 16px;
       }
       .slot-heading,
       .slot-cell {
         padding: 0;
+      }
+      .slot-heading {
+        font-size: 0.68rem;
+        text-align: center;
+        padding: inherit;
       }
       .slot-cell {
         width: 100%;
         min-width: 0;
       }
       .slot-cell.time-cell {
-        background: rgba(255,255,255,0.08);
+        padding: 16px 18px;
+        min-width: 80px;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.05);
         border-radius: 18px;
-        padding: 12px 14px;
       }
       .slot-cell > .booking-slot,
       .slot-cell > .available-cell {
-        padding: 10px;
+        padding: 8px;
       }
       .time-cell {
         min-width: 0;
         white-space: normal;
-        font-size: 0.88rem;
-      }
-      .booking-slot {
-        min-height: 58px;
-      }
-      .booking-slot h4 {
-        font-size: 0.94rem;
-      }
-      .booking-slot .slot-meta {
+        word-break: break-word;
+        line-height: 1.1;
         font-size: 0.78rem;
       }
-      .topbar,
-      .header-actions {
-        flex-direction: column;
-        align-items: stretch;
+      .booking-slot {
+        min-height: 50px;
+      }
+      .booking-slot h4 {
+        font-size: 0.78rem;
+      }
+      .booking-slot .slot-meta {
+        font-size: 0.66rem;
+      }
+      .topbar h1 {
+        font-size: 1.35rem;
+      }
+      .schedule-summary {
+        font-size: 0.78rem;
+      }
+      .schedule-input,
+      .header-actions button,
+      .btn {
+        font-size: 0.78rem;
+      }
+      .btn {
+        padding: 6px 8px;
       }
       .schedule-input {
-        width: 100%;
+        padding: 8px 10px;
+      }
+      .topbar {
+        gap: 12px;
+      }
+      .header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+      }
+      .header-actions #refreshBtn {
+        order: 1;
+        margin-left: auto;
+      }
+      .schedule-input {
+        flex: 1 1 100%;
+        min-width: 120px;
       }
       .schedule-summary {
         font-size: 0.88rem;
