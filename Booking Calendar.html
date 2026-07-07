@@ -264,22 +264,61 @@
       .content { grid-template-columns: 1fr; }
       .schedule-table {
         width: 100%;
-        overflow-x: auto;
-        padding-bottom: 12px;
+        overflow-x: hidden;
+        padding-bottom: 10px;
       }
-      .table-row { grid-template-columns: 120px minmax(100px, 1fr) minmax(100px, 1fr); min-width: 420px; }
-      .table-head { grid-template-columns: 120px minmax(100px, 1fr) minmax(100px, 1fr); min-width: 420px; }
-      .table-header, .table-cell { padding: 10px; }
-      .table-header { font-size: 0.82rem; }
-      .time-cell { min-width: 120px; white-space: normal; }
-      .booking-slot { padding: 12px; min-height: 72px; }
-      .booking-slot h4 { font-size: 0.95rem; }
-      .booking-slot .slot-meta { font-size: 0.82rem; }
-      .topbar, .header-actions { flex-direction: column; align-items: stretch; }
-      .schedule-input { width: 100%; }
-      .schedule-summary { font-size: 0.92rem; }
-      .header-actions button, .btn { font-size: 0.9rem; padding: 10px 12px; }
-      .table-header, .table-cell { min-width: 0; }
+      .table-row {
+        grid-template-columns: 80px minmax(80px, 1fr) minmax(80px, 1fr);
+        gap: 6px;
+        min-width: auto;
+      }
+      .table-head {
+        grid-template-columns: 80px minmax(80px, 1fr) minmax(80px, 1fr);
+        gap: 6px;
+        min-width: auto;
+      }
+      .table-header,
+      .table-cell {
+        padding: 8px;
+      }
+      .table-header {
+        font-size: 0.78rem;
+      }
+      .time-cell {
+        min-width: 80px;
+        white-space: normal;
+        font-size: 0.85rem;
+      }
+      .booking-slot {
+        padding: 10px;
+        min-height: 64px;
+      }
+      .booking-slot h4 {
+        font-size: 0.92rem;
+      }
+      .booking-slot .slot-meta {
+        font-size: 0.78rem;
+      }
+      .topbar,
+      .header-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .schedule-input {
+        width: 100%;
+      }
+      .schedule-summary {
+        font-size: 0.88rem;
+      }
+      .header-actions button,
+      .btn {
+        font-size: 0.85rem;
+        padding: 8px 10px;
+      }
+      .table-header,
+      .table-cell {
+        min-width: 0;
+      }
     }
   </style>
 </head>
