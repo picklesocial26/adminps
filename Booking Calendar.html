@@ -207,10 +207,10 @@
     .time-cell {
       font-weight: 600;
       color: var(--accent);
-      white-space: nowrap;
-      word-break: normal;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      word-break: break-word;
+      overflow: visible;
+      text-overflow: clip;
     }
 
     .booking-slot {
@@ -267,11 +267,11 @@
         overflow-x: auto;
         padding-bottom: 12px;
       }
-      .table-row { grid-template-columns: 110px minmax(120px, 1fr) minmax(120px, 1fr); min-width: 450px; }
-      .table-head { grid-template-columns: 110px minmax(120px, 1fr) minmax(120px, 1fr); min-width: 450px; }
+      .table-row { grid-template-columns: 120px minmax(100px, 1fr) minmax(100px, 1fr); min-width: 420px; }
+      .table-head { grid-template-columns: 120px minmax(100px, 1fr) minmax(100px, 1fr); min-width: 420px; }
       .table-header, .table-cell { padding: 10px; }
       .table-header { font-size: 0.82rem; }
-      .time-cell { min-width: 110px; white-space: nowrap; }
+      .time-cell { min-width: 120px; white-space: normal; }
       .booking-slot { padding: 12px; min-height: 72px; }
       .booking-slot h4 { font-size: 0.95rem; }
       .booking-slot .slot-meta { font-size: 0.82rem; }
