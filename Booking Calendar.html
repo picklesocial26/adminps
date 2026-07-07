@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Booking Calendar - Pickle Social</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="icon" href="logo.jpeg" type="image/jpeg" />
+  <style>
+    :root {
+      --bg: #08090c;
+      --surface: #0f1319;
+      --surface-soft: #171c25;
+      --text-primary: #f3f4f6;
+      --text-secondary: #94a3b8;
+      --accent: #ec4899;
+      --accent-deep: #be185d;
+      --border: rgba(255,255,255,0.08);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --glow-pink: rgba(236,72,153,0.16);
+      --glow-mint: rgba(139,195,74,0.12);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 12% 10%, var(--glow-pink) 0%, transparent 18%),
+                  radial-gradient(circle at 88% 80%, var(--glow-mint) 0%, transparent 22%),
+                  linear-gradient(180deg, #07080b 0%, #181d27 100%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: rgba(15, 19, 25, 0.93);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .topbar h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.5rem;
+      letter-spacing: -0.4px;
+    }
+
+    .topbar p {
+      color: var(--text-secondary);
+      margin-top: 4px;
+      font-size: 0.95rem;
+    }
+
+    .btn {
+      border: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      color: white;
+      background: linear-gradient(135deg, var(--accent-deep), var(--accent));
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 26px rgba(236,72,153,0.24);
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+      padding: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 18px;
+    }
+
+    .schedule-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .schedule-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .schedule-label {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .schedule-summary {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .schedule-input {
+      width: 160px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text-primary);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.09);
+    }
+
+    .schedule-table {
+      display: grid;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 10px;
+      width: 100%;
+    }
+
+    .table-row,
+    .table-head {
+      display: grid;
+      grid-template-columns: minmax(160px, max-content) minmax(180px, 1fr) minmax(180px, 1fr);
+      gap: 10px;
+      align-items: start;
+      min-width: 560px;
+    }
+
+    .table-cell {
+      min-width: 0;
+    }
+
+    .time-cell {
+      min-width: 160px;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+    }
+
+    .court-columns,
+    .court-panel,
+    .court-title {
+      display: none;
+    }
+
+    .table-header,
+    .table-cell {
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .table-header {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .time-cell {
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+      word-break: normal;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .booking-slot {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 90px;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+    }
+
+    .booking-slot h4 {
+      margin: 0;
+      font-size: 1rem;
+      color: white;
+      letter-spacing: -0.02em;
+    }
+
+    .booking-slot .slot-meta {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      display: grid;
+      gap: 6px;
+    }
+
+    .booking-slot .slot-meta span {
+      display: block;
+      line-height: 1.4;
+    }
+
+    .booking-slot .slot-meta span:first-child {
+      color: var(--text-primary);
+      font-size: 0.93rem;
+      font-weight: 600;
+    }
+
+    .available-cell {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.02);
+      border: 1px dashed rgba(255,255,255,0.08);
+    }
+
+    @media (max-width: 900px) {
+      .content { grid-template-columns: 1fr; }
+      .schedule-table {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 12px;
+      }
+      .table-row { grid-template-columns: 110px minmax(120px, 1fr) minmax(120px, 1fr); min-width: 450px; }
+      .table-head { grid-template-columns: 110px minmax(120px, 1fr) minmax(120px, 1fr); min-width: 450px; }
+      .table-header, .table-cell { padding: 10px; }
+      .table-header { font-size: 0.82rem; }
+      .time-cell { min-width: 110px; white-space: nowrap; }
+      .booking-slot { padding: 12px; min-height: 72px; }
+      .booking-slot h4 { font-size: 0.95rem; }
+      .booking-slot .slot-meta { font-size: 0.82rem; }
+      .topbar, .header-actions { flex-direction: column; align-items: stretch; }
+      .schedule-input { width: 100%; }
+      .schedule-summary { font-size: 0.92rem; }
+      .header-actions button, .btn { font-size: 0.9rem; padding: 10px 12px; }
+      .table-header, .table-cell { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <h1>Booking Calendar</h1>
+        <p>View scheduled bookings at a glance.</p>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="card">
+        <div class="schedule-header">
+          <div class="schedule-header-left">
+            <div class="schedule-label">Booking Schedule</div>
+            <div class="schedule-summary" id="scheduleSummary">Loading bookings...</div>
+          </div>
+          <div class="header-actions">
+            <button class="btn-secondary" id="prevDayBtn">←</button>
+            <button class="btn-secondary" id="todayBtn">Today</button>
+            <button class="btn-secondary" id="nextDayBtn">→</button>
+            <input type="date" id="scheduleDate" class="schedule-input" />
+            <button class="btn" id="refreshBtn">Refresh</button>
+          </div>
+        </div>
+
+        <div class="schedule-table" id="scheduleTable"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script>
+    let bookings = [];
+    let selectedDate = null;
+    let supabaseClient = null;
+
+    const scheduleDateInput = document.getElementById('scheduleDate');
+    const scheduleSummary = document.getElementById('scheduleSummary');
+    const scheduleList = document.getElementById('scheduleList');
+    const bookingDetails = document.getElementById('bookingDetails');
+
+    function formatDate(dateString) {
+      if (!dateString) return '—';
+      const date = new Date(dateString + 'T00:00:00');
+      return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+
+    function getBookingsForDate(dateKey) {
+      return bookings.filter(item => item.booking_date === dateKey);
+    }
+
+    function parseHour(timeValue) {
+      if (!timeValue) return null;
+      const text = timeValue.toString().trim();
+      const rangeParts = text.split('-').map(part => part.trim());
+      const startText = rangeParts[0] || text;
+      const match = startText.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
+      if (!match) return null;
+      let hour = parseInt(match[1], 10);
+      const minutes = parseInt(match[2] || '0', 10);
+      const period = (match[3] || '').toUpperCase();
+      if (period === 'PM' && hour < 12) hour += 12;
+      if (period === 'AM' && hour === 12) hour = 0;
+      return hour;
+    }
+
+    function formatTimeRange(hour) {
+      const start = new Date();
+      start.setHours(hour, 0, 0, 0);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      return `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+    function isPastSlot(dateKey, hour) {
+      const today = new Date();
+      const slotDate = new Date(dateKey + 'T00:00:00');
+      if (slotDate < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+        return true;
+      }
+      if (slotDate > new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+        return false;
+      }
+      return hour < today.getHours();
+    }
+
+    function renderSchedule(dateKey) {
+      const items = getBookingsForDate(dateKey);
+      const label = formatDate(dateKey);
+      const scheduleTable = document.getElementById('scheduleTable');
+
+      scheduleSummary.textContent = items.length
+        ? `Showing ${items.length} booking${items.length > 1 ? 's' : ''} for ${label}`
+        : `No bookings for ${label}`;
+
+      const courtOne = items.filter(item => {
+        const court = (item.court || item.court_name || '').toString().toLowerCase();
+        return court.includes('court one') || court.includes('court1') || court === '1';
+      });
+      const courtTwo = items.filter(item => {
+        const court = (item.court || item.court_name || '').toString().toLowerCase();
+        return court.includes('court two') || court.includes('court2') || court === '2';
+      });
+
+      const rows = [];
+      const makeCell = (booking, hour, timeLabel) => {
+        if (!booking) {
+          if (isPastSlot(dateKey, hour)) {
+            return '<div class="available-cell">Past</div>';
+          }
+          return '<div class="available-cell">Available</div>';
+        }
+        return `
+          <div class="booking-slot">
+            <h4>${booking.customer_name || 'Customer'}</h4>
+            <div class="slot-meta">
+              <span>${booking.time_slot || booking.booking_time || timeLabel}</span>
+              <span>${booking.phone_number || booking.phone || 'No Phone'}</span>
+              <span>${booking.reference_code || 'No Ref'}</span>
+            </div>
+          </div>
+        `;
+      };
+
+      for (let hour = 0; hour < 24; hour++) {
+        const timeLabel = formatTimeRange(hour);
+        const oneBooking = courtOne.find(item => parseHour(item.time_slot || item.booking_time) === hour);
+        const twoBooking = courtTwo.find(item => parseHour(item.time_slot || item.booking_time) === hour);
+
+        rows.push(`
+          <div class="table-row">
+            <div class="table-cell time-cell">${timeLabel}</div>
+            <div class="table-cell">${makeCell(oneBooking, hour, timeLabel)}</div>
+            <div class="table-cell">${makeCell(twoBooking, hour, timeLabel)}</div>
+          </div>
+        `);
+      }
+
+      scheduleTable.innerHTML = `
+        <div class="table-head">
+          <div class="table-header">Time</div>
+          <div class="table-header">Court One</div>
+          <div class="table-header">Court Two</div>
+        </div>
+        ${rows.join('')}
+      `;
+    }
+
+    async function loadBookings() {
+      scheduleSummary.textContent = 'Loading bookings...';
+      scheduleTable.innerHTML = '<div class="table-header">Time</div><div class="table-header">Court One</div><div class="table-header">Court Two</div>';
+
+      const { data, error } = await supabaseClient
+        .from('bookings')
+        .select('id, reference_code, customer_name, phone_number, booking_date, time_slot, booking_time, court, court_name, status')
+        .order('booking_date', { ascending: true });
+
+      if (error) {
+        console.error('Failed to load bookings:', error);
+        scheduleSummary.textContent = 'Unable to load bookings';
+        scheduleTable.innerHTML = '<div class="table-cell">Unable to load bookings</div><div class="table-cell"></div><div class="table-cell"></div>';
+        return;
+      }
+
+      bookings = (data || []).filter(item => item.booking_date);
+      const today = new Date();
+      const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      selectedDate = todayKey;
+      scheduleDateInput.value = todayKey;
+      renderSchedule(todayKey);
+    }
+
+    async function initSchedule() {
+      const supabaseConfig = window.SUPABASE_CONFIG || {};
+      const SUPABASE_URL = supabaseConfig.url || 'https://nozisfmqzkeywefrqkok.supabase.co';
+      const SUPABASE_ANON_KEY = supabaseConfig.anonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk';
+
+      if (!window.supabase) {
+        scheduleSummary.textContent = 'Supabase library missing';
+        scheduleList.innerHTML = '<div class="booking-item"><strong>Supabase library missing</strong><div class="meta">Please refresh the page and try again.</div></div>';
+        return;
+      }
+
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const prevDayBtn = document.getElementById('prevDayBtn');
+      const nextDayBtn = document.getElementById('nextDayBtn');
+      const todayBtn = document.getElementById('todayBtn');
+      const refreshBtn = document.getElementById('refreshBtn');
+
+      scheduleDateInput.addEventListener('change', () => {
+        selectedDate = scheduleDateInput.value;
+        if (selectedDate) {
+          renderSchedule(selectedDate);
+        }
+      });
+
+      prevDayBtn.addEventListener('click', () => {
+        const current = new Date(scheduleDateInput.value);
+        current.setDate(current.getDate() - 1);
+        selectedDate = current.toISOString().slice(0, 10);
+        scheduleDateInput.value = selectedDate;
+        renderSchedule(selectedDate);
+      });
+
+      nextDayBtn.addEventListener('click', () => {
+        const current = new Date(scheduleDateInput.value);
+        current.setDate(current.getDate() + 1);
+        selectedDate = current.toISOString().slice(0, 10);
+        scheduleDateInput.value = selectedDate;
+        renderSchedule(selectedDate);
+      });
+
+      todayBtn.addEventListener('click', () => {
+        const today = new Date();
+        selectedDate = today.toISOString().slice(0, 10);
+        scheduleDateInput.value = selectedDate;
+        renderSchedule(selectedDate);
+      });
+
+      refreshBtn.addEventListener('click', async () => {
+        await loadBookings();
+      });
+
+      await loadBookings();
+    }
+
+    initSchedule();
+  </script>
+</body>
+</html>

@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
   <title>Admin Dashboard - Pickle Social</title>
 
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="icon" href="logo.jpeg" type="image/jpeg">
 
   <link rel="stylesheet" href="css/admin-dashboard.css">
 </head>
 
 <body>
-
+<div class="app">
 <nav>
   <div class="nav-brand">
     <a href="https://picklesocialcebu.site" target="_blank" title="Visit Pickle Social">
@@ -50,8 +51,8 @@
           <option value="cancelled">Cancelled</option>
           <option value="expired">Expired</option>
         </select>
+        <a class="btn-secondary" href="Booking Calendar.html">Booking Calendar</a>
         <button class="btn-secondary" onclick="openCalendarModal()">Calendar</button>
-        <button class="btn-primary" onclick="openAddBookingModal()">Add Booking</button>
         <button class="btn-primary" onclick="refreshData()">Refresh</button>
       </div>
     </div>
@@ -464,7 +465,7 @@
 
 <!-- Toast Notification -->
 <div class="toast" id="toast">Copied to clipboard</div>
-
+</div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/supabase-config.js"></script>

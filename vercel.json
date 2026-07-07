@@ -1,7 +1,10 @@
 {
   "version": 2,
   "routes": [
+    { "src": "^/index\\.html$", "status": 301, "dest": "/" },
     { "src": "^/$", "dest": "/index.html" },
-    { "src": "^/dashboard$", "dest": "/admin-dashboard.html" }
+    { "src": "^/admin-dashboard\\.html$", "status": 301, "dest": "/dashboard" },
+    { "src": "^/dashboard$", "dest": "/admin-dashboard.html" },
+    { "src": "^/booking-calendar$", "dest": "/Booking Calendar.html" }
   ]
 }
