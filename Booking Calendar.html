@@ -309,6 +309,20 @@
     }
 
     @media (max-width: 900px) {
+      body {
+        padding: 12px;
+      }
+      .page {
+        margin: 0;
+        width: 100%;
+        border-radius: 0;
+      }
+      .schedule-card {
+        margin: 0;
+        width: 100%;
+        padding: 18px 14px 20px;
+        border-radius: 0 0 20px 20px;
+      }
       .content { grid-template-columns: 1fr; }
       .schedule-table {
         display: block;
@@ -319,7 +333,7 @@
       .slot-row {
         display: grid;
         grid-template-columns: 1fr !important;
-        gap: 14px;
+        gap: 12px;
         min-width: auto;
       }
       .slot-header {
@@ -334,7 +348,7 @@
         min-width: 0;
       }
       .slot-cell.time-cell {
-        background: rgba(255,255,255,0.05);
+        background: rgba(255,255,255,0.08);
         border-radius: 18px;
         padding: 14px 16px;
       }
