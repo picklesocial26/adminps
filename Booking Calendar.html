@@ -325,19 +325,24 @@
       }
       .content { grid-template-columns: 1fr; }
       .schedule-table {
-        display: block;
+        display: grid;
         width: 100%;
-        overflow-x: hidden;
+        overflow-x: auto;
         padding-bottom: 10px;
       }
-      .slot-row {
+      .slot-row,
+      .slot-header {
         display: grid;
-        grid-template-columns: 1fr !important;
+        grid-template-columns: 100px minmax(140px, 1fr) minmax(140px, 1fr);
         gap: 12px;
-        min-width: auto;
+        min-width: 100%;
+      }
+      .slot-row {
+        min-width: 420px;
       }
       .slot-header {
-        display: none !important;
+        padding: 14px 10px;
+        border-radius: 18px;
       }
       .slot-heading,
       .slot-cell {
