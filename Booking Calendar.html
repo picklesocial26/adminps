@@ -48,17 +48,20 @@
     .topbar {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      padding: 20px 24px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      flex-wrap: wrap;
+      align-items: flex-start;
+      padding: 28px 26px;
       gap: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
     }
 
     .topbar h1 {
       font-family: 'Space Grotesk', sans-serif;
-      font-size: 1.5rem;
-      letter-spacing: -0.4px;
+      font-size: 2rem;
+      letter-spacing: -0.6px;
+      margin-bottom: 4px;
     }
 
     .topbar p {
@@ -69,19 +72,20 @@
 
     .btn {
       border: none;
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-weight: 600;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-weight: 700;
       cursor: pointer;
       text-decoration: none;
       color: white;
       background: linear-gradient(135deg, var(--accent-deep), var(--accent));
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: 0 18px 30px rgba(236,72,153,0.18);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
     }
 
     .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 26px rgba(236,72,153,0.24);
+      transform: translateY(-2px);
+      box-shadow: 0 20px 34px rgba(236,72,153,0.22);
     }
 
     .content {
@@ -91,16 +95,18 @@
     .schedule-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: 16px;
       flex-wrap: wrap;
-      margin: 24px 0 18px;
+      margin: 0 0 18px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
 
     .schedule-header-left {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
 
     .schedule-label {
@@ -141,9 +147,19 @@
       background: rgba(255,255,255,0.09);
     }
 
+    .schedule-card {
+      background: rgba(15, 19, 25, 0.92);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 28px;
+      padding: 24px;
+      box-shadow: 0 32px 90px rgba(0, 0, 0, 0.30);
+      backdrop-filter: blur(16px);
+      margin: 20px;
+    }
+
     .schedule-table {
       display: grid;
-      gap: 12px;
+      gap: 14px;
       overflow-x: auto;
       padding-bottom: 10px;
       width: 100%;
@@ -152,20 +168,62 @@
     .slot-header,
     .slot-row {
       display: grid;
-      grid-template-columns: 120px minmax(120px, 1fr) minmax(120px, 1fr);
-      gap: 10px;
-      align-items: start;
+      grid-template-columns: 120px minmax(160px, 1fr) minmax(160px, 1fr);
+      gap: 16px;
+      align-items: stretch;
       min-width: 100%;
       width: 100%;
+      grid-auto-rows: minmax(88px, auto);
+    }
+
+    .slot-header {
+      padding: 18px 16px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
     }
 
     .slot-cell {
       min-width: 0;
-      border-radius: 14px;
-      padding: 14px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      overflow-wrap: anywhere;
+      padding: 0;
+      background: transparent;
+      border: none;
+      overflow: hidden;
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+    }
+
+    .slot-cell.time-cell {
+      padding: 16px 18px;
+      min-width: 140px;
+      justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border-radius: 18px;
+    }
+
+    .slot-cell > .booking-slot,
+    .slot-cell > .available-cell {
+      width: 100%;
+      min-height: 100%;
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      z-index: 0;
+    }
+
+    .slot-cell > .available-cell {
+      background: rgba(255,255,255,0.02);
+      border: 1px dashed rgba(255,255,255,0.08);
+      color: var(--text-secondary);
+      align-items: center;
     }
 
     .time-cell {
@@ -183,7 +241,18 @@
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: var(--text-secondary);
-      background: rgba(255,255,255,0.04);
+      background: rgba(255,255,255,0.05);
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .slot-row:hover .slot-cell > .booking-slot {
+      transform: translateY(-1px);
+    }
+
+    .slot-row:hover .slot-cell > .booking-slot {
+      transform: translateY(-1px);
     }
 
     .court-columns,
@@ -197,11 +266,11 @@
       flex-direction: column;
       gap: 8px;
       min-height: 90px;
-      padding: 16px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.1);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
     }
 
     .booking-slot h4 {
@@ -242,41 +311,50 @@
     @media (max-width: 900px) {
       .content { grid-template-columns: 1fr; }
       .schedule-table {
+        display: block;
         width: 100%;
         overflow-x: hidden;
         padding-bottom: 10px;
       }
       .slot-row {
-        grid-template-columns: 90px minmax(90px, 1fr) minmax(90px, 1fr);
-        gap: 6px;
+        display: grid;
+        grid-template-columns: 1fr !important;
+        gap: 14px;
         min-width: auto;
       }
       .slot-header {
-        grid-template-columns: 90px minmax(90px, 1fr) minmax(90px, 1fr);
-        gap: 6px;
-        min-width: auto;
+        display: none !important;
       }
       .slot-heading,
       .slot-cell {
-        padding: 8px;
+        padding: 0;
       }
-      .slot-heading {
-        font-size: 0.78rem;
+      .slot-cell {
+        width: 100%;
+        min-width: 0;
+      }
+      .slot-cell.time-cell {
+        background: rgba(255,255,255,0.05);
+        border-radius: 18px;
+        padding: 14px 16px;
+      }
+      .slot-cell > .booking-slot,
+      .slot-cell > .available-cell {
+        padding: 12px;
       }
       .time-cell {
-        min-width: 90px;
+        min-width: 0;
         white-space: normal;
-        font-size: 0.85rem;
+        font-size: 0.95rem;
       }
       .booking-slot {
-        padding: 10px;
         min-height: 64px;
       }
       .booking-slot h4 {
-        font-size: 0.92rem;
+        font-size: 0.96rem;
       }
       .booking-slot .slot-meta {
-        font-size: 0.78rem;
+        font-size: 0.8rem;
       }
       .topbar,
       .header-actions {
@@ -294,10 +372,6 @@
         font-size: 0.85rem;
         padding: 8px 10px;
       }
-      .slot-heading,
-      .slot-cell {
-        min-width: 0;
-      }
     }
   </style>
 </head>
@@ -310,6 +384,7 @@
       </div>
     </div>
 
+    <div class="schedule-card">
         <div class="schedule-header">
           <div class="schedule-header-left">
             <div class="schedule-label">Booking Schedule</div>
@@ -326,15 +401,17 @@
 
         <div class="schedule-table" id="scheduleTable"></div>
       </div>
-  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-config.js"></script>
   <script>
+    let bookings = [];
+    let selectedDate = null;
+    let supabaseClient = null;
+
     const scheduleDateInput = document.getElementById('scheduleDate');
     const scheduleSummary = document.getElementById('scheduleSummary');
-    const scheduleList = document.getElementById('scheduleList');
-    const bookingDetails = document.getElementById('bookingDetails');
+    const scheduleTable = document.getElementById('scheduleTable');
 
     function formatDate(dateString) {
       if (!dateString) return '—';
@@ -410,7 +487,6 @@
           <div class="booking-slot">
             <h4>${booking.customer_name || 'Customer'}</h4>
             <div class="slot-meta">
-              <span>${booking.time_slot || booking.booking_time || timeLabel}</span>
               <span>${booking.phone_number || booking.phone || 'No Phone'}</span>
               <span>${booking.reference_code || 'No Ref'}</span>
             </div>
@@ -444,7 +520,7 @@
 
     async function loadBookings() {
       scheduleSummary.textContent = 'Loading bookings...';
-      scheduleTable.innerHTML = '<div class="slot-heading">Time</div><div class="slot-heading">Court One</div><div class="slot-heading">Court Two</div>';
+      scheduleTable.innerHTML = '<div class="slot-header"><div class="slot-heading">Time</div><div class="slot-heading">Court One</div><div class="slot-heading">Court Two</div></div>';
 
       const { data, error } = await supabaseClient
         .from('bookings')
@@ -473,7 +549,7 @@
 
       if (!window.supabase) {
         scheduleSummary.textContent = 'Supabase library missing';
-        scheduleList.innerHTML = '<div class="booking-item"><strong>Supabase library missing</strong><div class="meta">Please refresh the page and try again.</div></div>';
+        scheduleTable.innerHTML = '<div class="slot-cell">Supabase library missing</div>';
         return;
       }
 
