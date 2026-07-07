@@ -85,19 +85,7 @@
     }
 
     .content {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 20px;
-      padding: 24px;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-
-    .card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 16px;
-      padding: 18px;
+      display: none;
     }
 
     .schedule-header {
@@ -106,7 +94,7 @@
       align-items: center;
       gap: 16px;
       flex-wrap: wrap;
-      margin-bottom: 18px;
+      margin: 24px 0 18px;
     }
 
     .schedule-header-left {
@@ -155,23 +143,29 @@
 
     .schedule-table {
       display: grid;
-      gap: 10px;
+      gap: 12px;
       overflow-x: auto;
       padding-bottom: 10px;
       width: 100%;
     }
 
-    .table-row,
-    .table-head {
+    .slot-header,
+    .slot-row {
       display: grid;
-      grid-template-columns: minmax(160px, max-content) minmax(180px, 1fr) minmax(180px, 1fr);
+      grid-template-columns: 120px minmax(120px, 1fr) minmax(120px, 1fr);
       gap: 10px;
       align-items: start;
-      min-width: 560px;
+      min-width: 100%;
+      width: 100%;
     }
 
-    .table-cell {
+    .slot-cell {
       min-width: 0;
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      overflow-wrap: anywhere;
     }
 
     .time-cell {
@@ -179,23 +173,11 @@
       white-space: normal;
       overflow: visible;
       text-overflow: clip;
+      font-weight: 600;
+      color: var(--accent);
     }
 
-    .court-columns,
-    .court-panel,
-    .court-title {
-      display: none;
-    }
-
-    .table-header,
-    .table-cell {
-      border-radius: 14px;
-      padding: 14px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .table-header {
+    .slot-heading {
       font-size: 0.85rem;
       font-weight: 700;
       text-transform: uppercase;
@@ -204,13 +186,10 @@
       background: rgba(255,255,255,0.04);
     }
 
-    .time-cell {
-      font-weight: 600;
-      color: var(--accent);
-      white-space: normal;
-      word-break: break-word;
-      overflow: visible;
-      text-overflow: clip;
+    .court-columns,
+    .court-panel,
+    .court-title {
+      display: none;
     }
 
     .booking-slot {
@@ -267,25 +246,25 @@
         overflow-x: hidden;
         padding-bottom: 10px;
       }
-      .table-row {
-        grid-template-columns: 80px minmax(80px, 1fr) minmax(80px, 1fr);
+      .slot-row {
+        grid-template-columns: 90px minmax(90px, 1fr) minmax(90px, 1fr);
         gap: 6px;
         min-width: auto;
       }
-      .table-head {
-        grid-template-columns: 80px minmax(80px, 1fr) minmax(80px, 1fr);
+      .slot-header {
+        grid-template-columns: 90px minmax(90px, 1fr) minmax(90px, 1fr);
         gap: 6px;
         min-width: auto;
       }
-      .table-header,
-      .table-cell {
+      .slot-heading,
+      .slot-cell {
         padding: 8px;
       }
-      .table-header {
+      .slot-heading {
         font-size: 0.78rem;
       }
       .time-cell {
-        min-width: 80px;
+        min-width: 90px;
         white-space: normal;
         font-size: 0.85rem;
       }
@@ -315,8 +294,8 @@
         font-size: 0.85rem;
         padding: 8px 10px;
       }
-      .table-header,
-      .table-cell {
+      .slot-heading,
+      .slot-cell {
         min-width: 0;
       }
     }
@@ -331,8 +310,6 @@
       </div>
     </div>
 
-    <div class="content">
-      <div class="card">
         <div class="schedule-header">
           <div class="schedule-header-left">
             <div class="schedule-label">Booking Schedule</div>
@@ -349,16 +326,11 @@
 
         <div class="schedule-table" id="scheduleTable"></div>
       </div>
-    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-config.js"></script>
   <script>
-    let bookings = [];
-    let selectedDate = null;
-    let supabaseClient = null;
-
     const scheduleDateInput = document.getElementById('scheduleDate');
     const scheduleSummary = document.getElementById('scheduleSummary');
     const scheduleList = document.getElementById('scheduleList');
@@ -452,19 +424,19 @@
         const twoBooking = courtTwo.find(item => parseHour(item.time_slot || item.booking_time) === hour);
 
         rows.push(`
-          <div class="table-row">
-            <div class="table-cell time-cell">${timeLabel}</div>
-            <div class="table-cell">${makeCell(oneBooking, hour, timeLabel)}</div>
-            <div class="table-cell">${makeCell(twoBooking, hour, timeLabel)}</div>
+          <div class="slot-row">
+            <div class="slot-cell time-cell">${timeLabel}</div>
+            <div class="slot-cell">${makeCell(oneBooking, hour, timeLabel)}</div>
+            <div class="slot-cell">${makeCell(twoBooking, hour, timeLabel)}</div>
           </div>
         `);
       }
 
       scheduleTable.innerHTML = `
-        <div class="table-head">
-          <div class="table-header">Time</div>
-          <div class="table-header">Court One</div>
-          <div class="table-header">Court Two</div>
+        <div class="slot-header">
+          <div class="slot-heading">Time</div>
+          <div class="slot-heading">Court One</div>
+          <div class="slot-heading">Court Two</div>
         </div>
         ${rows.join('')}
       `;
@@ -472,7 +444,7 @@
 
     async function loadBookings() {
       scheduleSummary.textContent = 'Loading bookings...';
-      scheduleTable.innerHTML = '<div class="table-header">Time</div><div class="table-header">Court One</div><div class="table-header">Court Two</div>';
+      scheduleTable.innerHTML = '<div class="slot-heading">Time</div><div class="slot-heading">Court One</div><div class="slot-heading">Court Two</div>';
 
       const { data, error } = await supabaseClient
         .from('bookings')
@@ -482,7 +454,7 @@
       if (error) {
         console.error('Failed to load bookings:', error);
         scheduleSummary.textContent = 'Unable to load bookings';
-        scheduleTable.innerHTML = '<div class="table-cell">Unable to load bookings</div><div class="table-cell"></div><div class="table-cell"></div>';
+        scheduleTable.innerHTML = '<div class="slot-cell">Unable to load bookings</div><div class="slot-cell"></div><div class="slot-cell"></div>';
         return;
       }
 
