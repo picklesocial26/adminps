@@ -325,7 +325,7 @@
       }
       .content { grid-template-columns: 1fr; }
       .schedule-table {
-        display: grid;
+        display: block;
         width: 100%;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -334,12 +334,9 @@
       .slot-row,
       .slot-header {
         display: grid;
-        grid-template-columns: 90px minmax(120px, 1fr) minmax(120px, 1fr);
-        gap: 10px;
-        min-width: max-content;
-      }
-      .slot-row {
-        min-width: 380px;
+        grid-template-columns: 90px minmax(160px, 1fr) minmax(160px, 1fr);
+        gap: 12px;
+        min-width: 460px;
       }
       .slot-header {
         padding: 14px 10px;
