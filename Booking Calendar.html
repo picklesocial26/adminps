@@ -328,17 +328,18 @@
         display: grid;
         width: 100%;
         overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
         padding-bottom: 10px;
       }
       .slot-row,
       .slot-header {
         display: grid;
-        grid-template-columns: 100px minmax(140px, 1fr) minmax(140px, 1fr);
-        gap: 12px;
-        min-width: 100%;
+        grid-template-columns: 90px minmax(120px, 1fr) minmax(120px, 1fr);
+        gap: 10px;
+        min-width: max-content;
       }
       .slot-row {
-        min-width: 420px;
+        min-width: 380px;
       }
       .slot-header {
         padding: 14px 10px;
@@ -390,6 +391,16 @@
       .btn {
         font-size: 0.85rem;
         padding: 8px 10px;
+      }
+      .schedule-table::-webkit-scrollbar {
+        height: 8px;
+      }
+      .schedule-table::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .schedule-table::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.15);
+        border-radius: 999px;
       }
     }
   </style>
