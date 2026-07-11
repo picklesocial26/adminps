@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Logs - Pickle Social</title>
+  <link rel="icon" href="logo.jpeg" type="image/jpeg" />
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, Arial, sans-serif;
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    .page { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .topbar h1 { margin: 0; font-size: 1.6rem; }
+    .topbar p { margin: 4px 0 0; color: var(--muted); }
+    .btn { padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+    .btn-secondary { background: #e5e7eb; color: #111827; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05); }
+    .empty { color: var(--muted); padding: 24px 0; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 12px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { background: #f8fafc; color: #334155; font-size: 0.9rem; font-weight: 700; }
+    tbody tr:hover { background: #f8fafc; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+    .badge.deleted { background: #fee2e2; color: var(--danger); }
+    .badge.expired { background: #fef3c7; color: var(--warning); }
+    .badge.default { background: #dbeafe; color: var(--accent); }
+    .details-cell { color: var(--text); font-size: 0.95rem; line-height: 1.5; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .details-btn { background: #eff6ff; color: var(--accent); border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.85rem; }
+    .admin-badge { display: inline-block; margin-bottom: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(37, 99, 235, 0.1); color: var(--accent); font-weight: 700; font-size: 0.9rem; }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 2000;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+      width: min(600px, 100%);
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      background: #f8fafc;
+    }
+    .modal-title { font-weight: 700; color: #111827; }
+    .modal-close { border: 0; background: transparent; font-size: 1.3rem; cursor: pointer; color: var(--muted); }
+    .modal-body { padding: 16px 18px; display: grid; gap: 10px; }
+    .detail-item {
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fcfdff;
+    }
+    .detail-item strong { display: block; margin-bottom: 4px; }
+    .detail-item .muted { display: block; margin-top: 2px; }
+    .table-scroll { width: 100%; overflow-x: auto; border-radius: 12px; }
+    .table-scroll table { min-width: 720px; }
+
+    @media (max-width: 900px) {
+      .page { padding: 16px; }
+      .topbar { flex-direction: column; align-items: flex-start; }
+      .card { padding: 14px; }
+    }
+
+    @media (max-width: 640px) {
+      .page { padding: 12px; }
+      .topbar h1 { font-size: 1.35rem; }
+      .topbar p { font-size: 0.95rem; }
+      .btn { width: 100%; }
+      .table-scroll table { min-width: 620px; }
+      .modal-card { border-radius: 12px; }
+      .modal-header, .modal-body { padding: 12px 14px; }
+      .detail-item { padding: 10px; }
+      .details-btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="modal-overlay" id="detailsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Booking Details</div>
+        <button class="modal-close" onclick="closeDetailsModal()" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="detailsModalBody">
+        <div class="empty">Select a log entry to view its booking details.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <h1>Deleted / Expired Logs</h1>
+        <p>Automatic audit trail for deleted bookings and expired bookings.</p>
+      </div>
+      <a class="btn btn-secondary" href="admin-dashboard.html">Back to Dashboard</a>
+    </div>
+
+    <div class="card">
+      <div id="activeAdminBadge" class="admin-badge">Connected: Loading...</div>
+      <div id="logsContent">
+        <div class="empty">Loading logs...</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script>
+    const storageKey = 'pickleAdminLogs';
+    let supabaseClient = null;
+
+    function getLocalLogs() {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        return saved ? JSON.parse(saved) : [];
+      } catch (err) {
+        return [];
+      }
+    }
+
+    async function initSupabase() {
+      if (supabaseClient) return supabaseClient;
+      const config = window.SUPABASE_CONFIG || {};
+      if (!config.url || !config.anonKey) return null;
+      supabaseClient = supabase.createClient(config.url, config.anonKey);
+      return supabaseClient;
+    }
+
+    async function getLogs() {
+      const client = await initSupabase();
+
+      if (client) {
+        try {
+          const { data, error } = await client
+            .from('admin_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+          if (!error && Array.isArray(data)) {
+            return data;
+          }
+
+          console.warn('Could not load logs from Supabase, using local storage fallback.', error);
+        } catch (err) {
+          console.warn('Supabase log load failed, using local storage fallback.', err);
+        }
+      }
+
+      return getLocalLogs();
+    }
+
+    function renderLogs(logs) {
+      const container = document.getElementById('logsContent');
+
+      if (!logs.length) {
+        container.innerHTML = '<div class="empty">No logs yet. Deleted or expired booking events will appear here.</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Date & Time</th>
+                <th>Action</th>
+                <th>Booking Summary</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logs.map(log => {
+                const badgeClass = log.type === 'deleted' ? 'deleted' : log.type === 'expired' ? 'expired' : 'default';
+                const createdAtValue = log.created_at || log.createdAt;
+                const createdAt = createdAtValue ? new Date(createdAtValue).toLocaleString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true
+                }) : 'Unknown';
+                let bookings = [];
+                try {
+                  if (log.details && typeof log.details === 'string' && log.details.startsWith('{')) {
+                    const parsed = JSON.parse(log.details);
+                    bookings = Array.isArray(parsed.bookings) ? parsed.bookings : [];
+                  }
+                } catch (err) {
+                  bookings = [];
+                }
+                const summary = bookings.length > 0
+                  ? bookings.map(item => `${item.booking_date || 'N/A'} • ${item.booking_time || 'N/A'} • ${item.court || 'N/A'}`).join('<br>')
+                  : (log.reference_code ? 'Reference: ' + log.reference_code : 'Reference: N/A');
+                const actorName = getLogActorName(log);
+                return `
+                  <tr>
+                    <td><span class="badge ${badgeClass}">${log.type || 'info'}</span></td>
+                    <td>${createdAt}</td>
+                    <td class="details-cell"><strong>${log.title || 'Admin action'}</strong><br><span class="muted">Performed by: ${actorName}</span><br><span class="muted">${log.details && log.details.startsWith('{') ? 'Grouped booking action' : (log.details || 'No details available.')}</span></td>
+                    <td class="details-cell">${summary}</td>
+                    <td class="details-cell">
+                      <button class="details-btn" onclick="openLogDetails('${log.id}', '${log.title || 'Admin action'}', '${createdAt}')">View Details</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function getCurrentAdmin() {
+      try {
+        const profile = sessionStorage.getItem('adminProfile');
+        return profile ? JSON.parse(profile) : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function getLogActorName(log) {
+      if (log.actor_name || log.admin_name) return log.actor_name || log.admin_name;
+      const match = (log.details || '').match(/Action by ([^.]+)\./i);
+      return match ? match[1].trim() : 'Unknown Admin';
+    }
+
+    function openLogDetails(id, title, createdAt) {
+      const modal = document.getElementById('detailsModal');
+      const body = document.getElementById('detailsModalBody');
+      const log = (window.allLogs || []).find(item => item.id === id);
+      if (!log) return;
+
+      let bookings = [];
+      try {
+        if (log.details && typeof log.details === 'string' && log.details.startsWith('{')) {
+          const parsed = JSON.parse(log.details);
+          bookings = Array.isArray(parsed.bookings) ? parsed.bookings : [];
+        }
+      } catch (err) {
+        bookings = [];
+      }
+
+      const header = `
+        <div class="detail-item">
+          <strong>${title || 'Admin action'}</strong>
+          <span class="muted">${createdAt}</span>
+        </div>
+      `;
+
+      const sortedBookings = [...bookings].sort((a, b) => {
+        const courtA = Number(String(a.court || '').replace(/[^0-9]/g, '')) || 0;
+        const courtB = Number(String(b.court || '').replace(/[^0-9]/g, '')) || 0;
+        if (courtA !== courtB) return courtA - courtB;
+
+        const timeA = String(a.booking_time || '').trim();
+        const timeB = String(b.booking_time || '').trim();
+
+        const parseTimeValue = (value) => {
+          if (!value) return Number.MAX_SAFE_INTEGER;
+          const cleaned = value.toLowerCase().replace(/\s+/g, '');
+          const match = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+          if (!match) return Number.MAX_SAFE_INTEGER;
+
+          let hours = parseInt(match[1], 10);
+          const minutes = parseInt(match[2] || '0', 10);
+          const meridiem = match[3];
+
+          if (meridiem === 'pm' && hours !== 12) hours += 12;
+          if (meridiem === 'am' && hours === 12) hours = 0;
+
+          return hours * 60 + minutes;
+        };
+
+        const timeValueA = parseTimeValue(timeA);
+        const timeValueB = parseTimeValue(timeB);
+
+        if (timeValueA !== timeValueB) {
+          return timeValueA - timeValueB;
+        }
+
+        return String(a.booking_date || '').localeCompare(String(b.booking_date || ''));
+      });
+
+      const totalAmount = sortedBookings.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const content = sortedBookings.length > 0
+        ? `
+            <div class="detail-item">
+              <strong>Total</strong>
+              <div class="muted">₱${totalAmount.toLocaleString()}</div>
+            </div>
+            ${sortedBookings.map(item => `
+              <div class="detail-item">
+                <strong>${item.court || 'Court'}</strong>
+                <div class="muted">Date: ${item.booking_date || 'N/A'}</div>
+                <div class="muted">Time: ${item.booking_time || 'N/A'}</div>
+                <div class="muted">Name: ${item.name || item.customer_name || item.guest_name || 'N/A'}</div>
+                <div class="muted">Phone: ${item.phone || item.phone_number || item.mobile || item.customer_phone || item.customer_phone_number || 'N/A'}</div>
+                <div class="muted">Amount: ${item.amount ? '₱' + Number(item.amount).toLocaleString() : 'N/A'}</div>
+              </div>
+            `).join('')}
+          `
+        : '<div class="detail-item"><strong>No booking details available.</strong></div>';
+
+      body.innerHTML = header + content;
+      modal.classList.add('open');
+    }
+
+    function closeDetailsModal() {
+      document.getElementById('detailsModal').classList.remove('open');
+    }
+
+    function updateActiveAdminBadge() {
+      const badge = document.getElementById('activeAdminBadge');
+      if (!badge) return;
+      const currentAdmin = getCurrentAdmin();
+      badge.textContent = currentAdmin ? `Connected: ${currentAdmin.name}` : 'Connected: Unknown';
+    }
+
+    async function loadLogs() {
+      updateActiveAdminBadge();
+      const logs = await getLogs();
+      window.allLogs = logs;
+      renderLogs(logs);
+    }
+
+    loadLogs();
+  </script>
+</body>
+</html>

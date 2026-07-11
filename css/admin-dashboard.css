@@ -95,6 +95,17 @@ nav {
   align-items: center;
 }
 
+.admin-profile-pill {
+  background: rgba(236, 72, 153, 0.12);
+  border: 1px solid rgba(236, 72, 153, 0.25);
+  color: var(--accent-soft);
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* Buttons */
 .btn-primary, .btn-secondary {
   font-family: 'Plus Jakarta Sans', sans-serif;

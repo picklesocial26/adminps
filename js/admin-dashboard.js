@@ -10,6 +10,108 @@ let selectedBookingIds = new Set();
 let currentBookingDetailsGroup = null;
 let calendarViewDate = new Date();
 let selectedCalendarDate = null;
+const adminLogsStorageKey = 'pickleAdminLogs';
+
+function getCurrentAdmin() {
+  try {
+    const profile = sessionStorage.getItem('adminProfile') || localStorage.getItem('adminProfile');
+    return profile ? JSON.parse(profile) : null;
+  } catch (err) {
+    console.error('Failed to read admin profile:', err);
+    return null;
+  }
+}
+
+function updateAdminProfileBadge() {
+  const badge = document.getElementById('adminProfilePill');
+  if (!badge) return;
+  const currentAdmin = getCurrentAdmin();
+  badge.textContent = currentAdmin ? `Connected: ${currentAdmin.name}` : 'Connected: Unknown';
+}
+
+function getAdminLogs() {
+  try {
+    const saved = localStorage.getItem(adminLogsStorageKey);
+    return saved ? JSON.parse(saved) : [];
+  } catch (err) {
+    console.error('Failed to load admin logs:', err);
+    return [];
+  }
+}
+
+function getVisibleBookings(bookings) {
+  return (bookings || []).filter(booking => booking.status !== 'expired');
+}
+
+function saveAdminLogs(logs) {
+  try {
+    localStorage.setItem(adminLogsStorageKey, JSON.stringify(logs));
+  } catch (err) {
+    console.error('Failed to save admin logs:', err);
+  }
+}
+
+function buildBookingLogDetails(booking = {}) {
+  const parts = [];
+  if (booking.reference_code) parts.push(`Reference: ${booking.reference_code}`);
+  if (booking.customer_name) parts.push(`Customer: ${booking.customer_name}`);
+  if (booking.booking_date) parts.push(`Booking Date: ${booking.booking_date}`);
+  if (booking.booking_time || booking.time_slot) parts.push(`Booking Time: ${booking.booking_time || booking.time_slot}`);
+  if (booking.court || booking.court_name) parts.push(`Court: ${booking.court || booking.court_name}`);
+  if (booking.price || booking.rate) parts.push(`Amount: ₱${Number(booking.price || booking.rate || 0).toLocaleString()}`);
+  return parts.length ? parts.join(' • ') : 'No booking details available.';
+}
+
+async function saveAdminLogToSupabase(entry) {
+  if (!supabaseClient) return false;
+
+  const payload = {
+    type: entry.type,
+    title: entry.title,
+    details: entry.details,
+    reference_code: entry.reference_code || null,
+    customer_name: entry.customer_name || null,
+    booking_id: entry.bookingId || entry.booking_id || null,
+    created_at: entry.createdAt
+  };
+
+  const { error } = await supabaseClient.from('admin_logs').insert(payload);
+  if (error) {
+    console.error('Failed to save admin log to Supabase:', error);
+    return false;
+  }
+
+  return true;
+}
+
+async function addAdminLog(type, title, details, payload = {}) {
+  const currentAdmin = getCurrentAdmin();
+  const actorName = currentAdmin?.name || 'Unknown Admin';
+  const actorPrefix = `Action by ${actorName}. `;
+
+  let serializedDetails = `${actorPrefix}${details}`;
+  if (payload.bookings && Array.isArray(payload.bookings)) {
+    serializedDetails = JSON.stringify({
+      summary: `${actorPrefix}${details}`,
+      bookings: payload.bookings
+    });
+  }
+
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    title,
+    details: serializedDetails,
+    createdAt: new Date().toISOString(),
+    actor_name: actorName,
+    ...payload
+  };
+
+  const logs = [entry, ...getAdminLogs()].slice(0, 200);
+  saveAdminLogs(logs);
+  await saveAdminLogToSupabase(entry);
+  return entry;
+}
 
 function getBookingGroupKey(booking) {
   if (booking.reference_code) return booking.reference_code;
@@ -109,9 +211,9 @@ function parseSlotStartDateTime(bookingDate, timeSlot) {
 
 // Check authentication
 function checkAuthentication() {
-  const token = sessionStorage.getItem('adminToken');
-  if (!token) {
-    // Not logged in, redirect to login
+  const token = sessionStorage.getItem('adminToken') || localStorage.getItem('adminToken');
+  const profile = sessionStorage.getItem('adminProfile') || localStorage.getItem('adminProfile');
+  if (!token || !profile) {
     window.location.href = 'index.html';
     return false;
   }
@@ -135,6 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   try {
+    updateAdminProfileBadge();
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Test connection
@@ -192,17 +295,17 @@ async function loadBookings() {
 
     if (error) throw error;
 
-    allBookings = data || [];
-    selectedBookingIds.clear();
-    console.log('Loaded bookings:', allBookings);
-    
-    // Check and update expired bookings
-    const expiredUpdated = await updateExpiredBookings(allBookings);
+    const bookingsData = data || [];
+    const expiredUpdated = await updateExpiredBookings(bookingsData);
     if (expiredUpdated) {
       await loadBookings();
       return;
     }
-    
+
+    allBookings = getVisibleBookings(bookingsData);
+    selectedBookingIds.clear();
+    console.log('Loaded bookings:', allBookings);
+
     applyFilters();
     refreshCalendarView();
   } catch (err) {
@@ -264,6 +367,32 @@ async function updateExpiredBookings(bookings) {
         console.error('Error updating expired bookings:', error);
       } else {
         console.log(`Updated ${expiredIds.length} bookings to expired status`);
+        const expiredBookings = bookings.filter(booking => expiredIds.includes(booking.id));
+        const bookingPayload = expiredBookings.map(booking => ({
+          bookingId: booking.id,
+          reference_code: booking.reference_code,
+          customer_name: booking.customer_name,
+          booking_date: booking.booking_date,
+          booking_time: booking.booking_time || booking.time_slot,
+          court: booking.court || booking.court_name,
+          amount: booking.price || booking.rate
+        }));
+
+        await addAdminLog(
+          'expired',
+          'Booking expired',
+          `Booking expired automatically for ${expiredBookings.length} booking slot(s).`,
+          {
+            bookingIds: expiredIds,
+            bookings: bookingPayload,
+            reference_code: expiredBookings[0]?.reference_code || null,
+            customer_name: expiredBookings[0]?.customer_name || null,
+            booking_date: expiredBookings[0]?.booking_date || null,
+            booking_time: expiredBookings[0]?.booking_time || expiredBookings[0]?.time_slot || null,
+            court: expiredBookings[0]?.court || expiredBookings[0]?.court_name || null,
+            amount: expiredBookings[0]?.price || expiredBookings[0]?.rate || null
+          }
+        );
         return true;
       }
     }
@@ -366,6 +495,12 @@ function renderTable() {
     statusBadge.textContent = group.status || 'pending';
     statusCell.appendChild(statusBadge);
 
+    const confirmedByCell = document.createElement('td');
+    const confirmedValues = [...new Set((group.bookings || [])
+      .map(booking => booking.confirmed_by || booking.confirmedBy)
+      .filter(Boolean))];
+    confirmedByCell.textContent = confirmedValues.length ? confirmedValues.join(', ') : '—';
+
     const actionCell = document.createElement('td');
     actionCell.className = 'action-buttons';
 
@@ -417,6 +552,7 @@ function renderTable() {
     row.appendChild(timeCell);
     row.appendChild(amountCell);
     row.appendChild(statusCell);
+    row.appendChild(confirmedByCell);
     row.appendChild(actionCell);
 
     tbody.appendChild(row);
@@ -616,6 +752,32 @@ async function bulkDelete() {
     return;
   }
 
+  const selectedBookings = selected.filter(b => ids.includes(b.id));
+  const bookingPayload = selectedBookings.map(booking => ({
+    bookingId: booking.id,
+    reference_code: booking.reference_code,
+    customer_name: booking.customer_name,
+    booking_date: booking.booking_date,
+    booking_time: booking.booking_time || booking.time_slot,
+    court: booking.court || booking.court_name,
+    amount: booking.price || booking.rate
+  }));
+
+  await addAdminLog(
+    'deleted',
+    'Bulk bookings deleted',
+    `Deleted ${selectedBookings.length} selected booking slot(s).`,
+    {
+      bookingIds: ids,
+      bookings: bookingPayload,
+      reference_code: selectedBookings[0]?.reference_code || null,
+      customer_name: selectedBookings[0]?.customer_name || null,
+      booking_date: selectedBookings[0]?.booking_date || null,
+      booking_time: selectedBookings[0]?.booking_time || selectedBookings[0]?.time_slot || null,
+      court: selectedBookings[0]?.court || selectedBookings[0]?.court_name || null,
+      amount: selectedBookings[0]?.price || selectedBookings[0]?.rate || null
+    }
+  );
   showToast('Selected bookings deleted');
   selectedBookingIds.clear();
   await loadBookings();
@@ -1655,6 +1817,33 @@ async function saveBookingChanges() {
     }
 
     console.log('Booking updated successfully');
+
+    if (currentEditingBooking.status !== 'expired' && status === 'expired') {
+      await addAdminLog(
+        'expired',
+        'Booking marked expired',
+        `Booking ${currentEditingBooking.reference_code || currentEditingBooking.id} was marked as expired manually.`,
+        {
+          bookingId: currentEditingBooking.id,
+          bookings: [{
+            bookingId: currentEditingBooking.id,
+            reference_code: currentEditingBooking.reference_code,
+            customer_name: name,
+            booking_date: currentEditingBooking.booking_date,
+            booking_time: currentEditingBooking.booking_time || currentEditingBooking.time_slot,
+            court: currentEditingBooking.court || currentEditingBooking.court_name,
+            amount: amount || currentEditingBooking.price || currentEditingBooking.rate
+          }],
+          reference_code: currentEditingBooking.reference_code,
+          customer_name: name,
+          booking_date: currentEditingBooking.booking_date,
+          booking_time: currentEditingBooking.booking_time || currentEditingBooking.time_slot,
+          court: currentEditingBooking.court || currentEditingBooking.court_name,
+          amount: amount || currentEditingBooking.price || currentEditingBooking.rate
+        }
+      );
+    }
+
     showToast('Booking updated successfully');
     closeEditModal();
     await loadBookings();
@@ -1736,6 +1925,29 @@ async function deleteBooking(booking) {
     }
 
     console.log('Booking deleted from database');
+    await addAdminLog(
+      'deleted',
+      'Booking deleted',
+      `Deleted booking ${booking.reference_code || booking.id} for ${booking.customer_name || 'Unknown'}.`,
+      {
+        bookingId: booking.id,
+        bookings: [{
+          bookingId: booking.id,
+          reference_code: booking.reference_code,
+          customer_name: booking.customer_name,
+          booking_date: booking.booking_date,
+          booking_time: booking.booking_time || booking.time_slot,
+          court: booking.court || booking.court_name,
+          amount: booking.price || booking.rate
+        }],
+        reference_code: booking.reference_code,
+        customer_name: booking.customer_name,
+        booking_date: booking.booking_date,
+        booking_time: booking.booking_time || booking.time_slot,
+        court: booking.court || booking.court_name,
+        amount: booking.price || booking.rate
+      }
+    );
     showToast('Booking deleted successfully');
     
     // Remove from local array and refresh UI immediately
@@ -1773,6 +1985,32 @@ async function deleteBookingGroup(group) {
     return;
   }
 
+  const deletedBookings = group.bookings.filter(b => deletableIds.includes(b.id));
+  const bookingPayload = deletedBookings.map(booking => ({
+    bookingId: booking.id,
+    reference_code: booking.reference_code,
+    customer_name: booking.customer_name,
+    booking_date: booking.booking_date,
+    booking_time: booking.booking_time || booking.time_slot,
+    court: booking.court || booking.court_name,
+    amount: booking.price || booking.rate
+  }));
+
+  await addAdminLog(
+    'deleted',
+    'Booking group deleted',
+    `Deleted ${deletedBookings.length} booking slot(s) from group ${group.reference_code || 'N/A'}.`,
+    {
+      bookingIds: deletableIds,
+      bookings: bookingPayload,
+      reference_code: group.reference_code,
+      customer_name: group.customer_name,
+      booking_date: deletedBookings[0]?.booking_date || null,
+      booking_time: deletedBookings[0]?.booking_time || deletedBookings[0]?.time_slot || null,
+      court: deletedBookings[0]?.court || deletedBookings[0]?.court_name || null,
+      amount: deletedBookings[0]?.price || deletedBookings[0]?.rate || null
+    }
+  );
   showToast('Booking group deleted successfully');
   selectedBookingIds.clear();
   await loadBookings();
@@ -1890,16 +2128,29 @@ async function confirmBookingViaMessenger(group) {
     // Store the text in a global variable for copying later
     window.currentConfirmationText = confirmationText;
     
+    const currentAdmin = getCurrentAdmin();
+    const confirmedBy = currentAdmin?.name || currentAdmin?.username || 'admin';
+    const confirmedAt = new Date().toISOString();
+
     // Update booking status to "paid" in Supabase
     if (group.ids && group.ids.length > 0 && supabaseClient) {
-      const { error } = await supabaseClient
+      const { data, error } = await supabaseClient
         .from('bookings')
-        .update({ status: 'paid' })
-        .in('id', group.ids);
+        .update({
+          status: 'paid',
+          confirmed_by: confirmedBy,
+          confirmed_at: confirmedAt
+        })
+        .in('id', group.ids)
+        .in('status', ['pending', 'unpaid'])
+        .select();
 
       if (error) {
         console.error('Error updating booking status:', error);
         showToast('Warning: Could not update booking status');
+      } else if (!data || data.length === 0) {
+        console.log('Booking confirmation was already processed by another admin');
+        showToast('This booking was already confirmed by another admin');
       } else {
         console.log('Booking status updated to paid');
       }
@@ -2016,6 +2267,9 @@ function closeTodayModal() {
 function logout() {
   if (confirm('Are you sure you want to logout?')) {
     sessionStorage.removeItem('adminToken');
+    sessionStorage.removeItem('adminProfile');
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminProfile');
     window.location.href = 'index.html';
   }
 }

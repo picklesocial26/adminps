@@ -3,8 +3,9 @@
   "routes": [
     { "src": "^/index\\.html$", "status": 301, "dest": "/" },
     { "src": "^/$", "dest": "/index.html" },
-    { "src": "^/admin-dashboard\\.html$", "status": 301, "dest": "/dashboard" },
     { "src": "^/dashboard$", "dest": "/admin-dashboard.html" },
-    { "src": "^/booking-calendar$", "dest": "/Booking Calendar.html" }
+    { "src": "^/logs$", "dest": "/Logs.html" },
+    { "src": "^/booking-calendar$", "dest": "/Booking%20Calendar.html" },
+    { "src": "^/(.+)\\.html$", "status": 301, "dest": "/$1" }
   ]
 }

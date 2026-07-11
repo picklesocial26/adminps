@@ -112,6 +112,22 @@
       outline: none;
     }
 
+    .remember-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0 6px;
+      color: var(--gray-text);
+      font-size: 0.9rem;
+    }
+
+    .remember-row input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
     .login-btn {
       width: 100%;
       background: linear-gradient(135deg, var(--accent-deep), var(--accent));
@@ -224,6 +240,11 @@
       >
     </div>
 
+    <label class="remember-row" for="rememberMe">
+      <input type="checkbox" id="rememberMe">
+      <span>Remember me</span>
+    </label>
+
     <button type="submit" class="login-btn" id="loginBtn">Login to Dashboard</button>
   </form>
 
@@ -232,22 +253,49 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  // Simple login (in production, use proper authentication!)
-  const ADMIN_PASSWORD = 'admin123'; // Change this!
+  const ADMINS = [
+    { name: 'Cody', password: 'cadmin123' },
+    { name: 'Akem', password: 'aadmin123' },
+    { name: 'Philip', password: 'padmin123' },
+    { name: 'Kat', password: 'kadmin123' },
+    { name: 'Grace', password: 'gadmin123' }
+  ];
+
+  function persistAdminSession(profile, rememberMe) {
+    const token = 'admin_' + Date.now().toString(36);
+    const profileData = JSON.stringify(profile);
+
+    sessionStorage.setItem('adminToken', token);
+    sessionStorage.setItem('adminProfile', profileData);
+
+    if (rememberMe) {
+      localStorage.setItem('adminToken', token);
+      localStorage.setItem('adminProfile', profileData);
+    } else {
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('adminProfile');
+    }
+  }
+
+  function isAdminLoggedIn() {
+    const token = sessionStorage.getItem('adminToken') || localStorage.getItem('adminToken');
+    const profile = sessionStorage.getItem('adminProfile') || localStorage.getItem('adminProfile');
+    return Boolean(token && profile);
+  }
 
   function handleLogin(e) {
     e.preventDefault();
-    
-    const password = document.getElementById('password').value;
-    const loginBtn = document.getElementById('loginBtn');
+
+    const password = document.getElementById('password').value.trim();
+    const rememberMe = document.getElementById('rememberMe').checked;
     const errorMessage = document.getElementById('errorMessage');
 
-    if (password === ADMIN_PASSWORD) {
-      // Store session token
-      const token = 'admin_' + Date.now().toString(36);
-      sessionStorage.setItem('adminToken', token);
-      
-      showToast('✅ Login successful! Redirecting...');
+    const matchedAdmin = ADMINS.find(admin => admin.password === password);
+
+    if (matchedAdmin) {
+      persistAdminSession({ name: matchedAdmin.name, password: matchedAdmin.password }, rememberMe);
+
+      showToast(`✅ Welcome ${matchedAdmin.name}! Redirecting...`);
       setTimeout(() => {
         window.location.href = 'admin-dashboard.html';
       }, 500);
@@ -255,7 +303,7 @@
       errorMessage.textContent = '❌ Invalid password';
       errorMessage.classList.add('show');
       document.getElementById('password').value = '';
-      
+
       setTimeout(() => {
         errorMessage.classList.remove('show');
       }, 3000);
@@ -272,7 +320,7 @@
   }
 
   // Check if already logged in
-  if (sessionStorage.getItem('adminToken')) {
+  if (isAdminLoggedIn()) {
     window.location.href = 'admin-dashboard.html';
   }
 </script>

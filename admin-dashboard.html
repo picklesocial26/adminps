@@ -22,6 +22,7 @@
     Pickle Social <span>Admin Dashboard</span>
   </div>
   <div class="nav-actions">
+    <div class="admin-profile-pill" id="adminProfilePill">Loading account...</div>
     <button class="btn-secondary" onclick="logout()">Logout</button>
   </div>
 </nav>
@@ -51,6 +52,7 @@
           <option value="cancelled">Cancelled</option>
           <option value="expired">Expired</option>
         </select>
+        <a class="btn-secondary" href="Logs.html">Logs</a>
         <a class="btn-secondary" href="Booking Calendar.html">Booking Calendar</a>
         <button class="btn-secondary" onclick="openCalendarModal()">Calendar</button>
         <button class="btn-primary" onclick="refreshData()">Refresh</button>
@@ -105,12 +107,13 @@
               <th>Book Time</th>
               <th>Amount</th>
               <th>Status</th>
+              <th>Confirmed By</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="bookingsTableBody">
             <tr>
-              <td colspan="11" class="loading-cell">Loading bookings...</td>
+              <td colspan="12" class="loading-cell">Loading bookings...</td>
             </tr>
           </tbody>
         </table>
