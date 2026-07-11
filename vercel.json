@@ -4,8 +4,10 @@
     { "src": "^/index\\.html$", "status": 301, "dest": "/" },
     { "src": "^/$", "dest": "/index.html" },
     { "src": "^/dashboard$", "dest": "/admin-dashboard.html" },
+    { "src": "^/admin-dashboard$", "dest": "/admin-dashboard.html" },
     { "src": "^/logs$", "dest": "/Logs.html" },
     { "src": "^/booking-calendar$", "dest": "/Booking%20Calendar.html" },
+    { "src": "^/favicon\\.ico$", "dest": "/logo.jpeg" },
     { "src": "^/(.+)\\.html$", "status": 301, "dest": "/$1" }
   ]
 }
