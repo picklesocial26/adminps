@@ -22,13 +22,17 @@
     Pickle Social <span>Admin Dashboard</span>
   </div>
   <div class="nav-actions">
-    <div class="admin-profile-pill" id="adminProfilePill">Loading account...</div>
-    <button class="btn-secondary" onclick="logout()">Logout</button>
+    <div class="admin-profile-pill nav-pill" id="adminProfilePill">Loading account...</div>
+
   </div>
 </nav>
 
 <main>
   <div class="container">
+    <div class="mobile-admin-row">
+      <div class="admin-profile-pill mobile-pill" id="adminProfilePillMobile">Loading account...</div>
+      <button class="btn-secondary mobile-logout" onclick="logout()">Logout</button>
+    </div>
     <!-- Header -->
     <div class="dashboard-header">
       <div class="dashboard-title">
@@ -37,25 +41,13 @@
       </div>
       <div class="header-controls">
         <input type="text" id="searchInput" class="filter-input" placeholder="Search reference, name, phone" oninput="applyFilters()">
-        <select id="courtFilter" class="filter-input" onchange="applyFilters()">
-          <option value="">All Courts</option>
-          <option value="Court One">Court One</option>
-          <option value="Court Two">Court Two</option>
-        </select>
         <input type="date" id="filterFrom" class="filter-input" onchange="applyFilters()">
-        <select id="filterStatus" class="filter-input" onchange="applyFilters()">
-          <option value="">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="unpaid">Unpaid</option>
-          <option value="paid">Paid</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="expired">Expired</option>
-        </select>
-        <a class="btn-secondary" href="Logs.html">Logs</a>
-        <a class="btn-secondary" href="Booking Calendar.html">Booking Calendar</a>
-        <button class="btn-secondary" onclick="openCalendarModal()">Calendar</button>
-        <button class="btn-primary" onclick="refreshData()">Refresh</button>
+        <div class="dashboard-actions">
+          <a class="btn-secondary" href="Logs.html">Logs</a>
+          <a class="btn-secondary" href="Booking Calendar.html">Booking Calendar</a>
+          <button class="btn-secondary" onclick="openCalendarModal()">Calendar</button>
+          <button class="btn-primary refresh-button" onclick="refreshData()">Refresh</button>
+        </div>
       </div>
     </div>
 

@@ -24,9 +24,11 @@ function getCurrentAdmin() {
 
 function updateAdminProfileBadge() {
   const badge = document.getElementById('adminProfilePill');
-  if (!badge) return;
+  const mobileBadge = document.getElementById('adminProfilePillMobile');
   const currentAdmin = getCurrentAdmin();
-  badge.textContent = currentAdmin ? `Connected: ${currentAdmin.name}` : 'Connected: Unknown';
+  const text = currentAdmin ? `Connected: ${currentAdmin.name}` : 'Connected: Unknown';
+  if (badge) badge.textContent = text;
+  if (mobileBadge) mobileBadge.textContent = text;
 }
 
 function getAdminLogs() {
@@ -515,7 +517,7 @@ function renderTable() {
     copyBtn.onclick = () => copyToClipboard(group.reference_code);
 
     const detailsBtn = document.createElement('button');
-    detailsBtn.className = 'action-btn';
+    detailsBtn.className = 'action-btn details-btn';
     detailsBtn.textContent = 'Details';
     detailsBtn.onclick = () => openBookingDetails(group);
 

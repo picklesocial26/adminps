@@ -95,6 +95,19 @@ nav {
   align-items: center;
 }
 
+.mobile-admin-row {
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0 20px;
+}
+
+.mobile-admin-row .admin-profile-pill {
+  width: auto;
+}
+
 .admin-profile-pill {
   background: rgba(236, 72, 153, 0.12);
   border: 1px solid rgba(236, 72, 153, 0.25);
@@ -184,6 +197,22 @@ main {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.refresh-button {
+  min-width: 140px;
+}
+
+.dashboard-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dashboard-actions a,
+.dashboard-actions button {
+  min-width: 140px;
 }
 
 .dashboard-title p {
@@ -487,18 +516,21 @@ main {
 .action-buttons {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .action-btn {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--accent);
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.15s;
-  font-weight: 600;
+  font-weight: 700;
+  min-width: 90px;
+  text-align: center;
 }
 
 .action-btn:hover {
@@ -1143,6 +1175,62 @@ main {
     font-size: 1.5rem;
   }
 
+  .nav-actions .nav-pill {
+    display: none;
+  }
+
+  .mobile-admin-row {
+    display: flex;
+  }
+
+  .mobile-admin-row .mobile-logout {
+    display: inline-flex;
+  }
+
+  .dashboard-actions {
+    width: 100%;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dashboard-actions a,
+  .dashboard-actions button {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 16px;
+    font-size: 1rem;
+    min-height: 48px;
+  }
+
+  .dashboard-actions button.btn-secondary,
+  .dashboard-actions a.btn-secondary {
+    border-radius: 14px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .action-btn {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 0.95rem;
+    min-height: 48px;
+  }
+
+  .action-btn.confirm-btn {
+    order: 1;
+  }
+
+  .action-btn.details-btn {
+    order: 2;
+  }
+
+  .action-buttons .action-btn:not(.confirm-btn):not(.details-btn) {
+    order: 3;
+  }
+
   .earnings-grid {
     grid-template-columns: 1fr;
   }
@@ -1159,6 +1247,11 @@ main {
 
   .btn-primary {
     width: 100%;
+    justify-content: center;
+  }
+
+  .refresh-button {
+    width: auto !important;
     justify-content: center;
   }
 
@@ -1267,8 +1360,12 @@ main {
 
   .btn-primary,
   .btn-secondary {
-    padding: 6px 10px;
-    font-size: 0.75rem;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+
+  .mobile-admin-row {
+    padding: 0 12px;
   }
 
   .bookings-table {
