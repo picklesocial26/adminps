@@ -66,6 +66,14 @@ nav {
   letter-spacing: -0.3px;
 }
 
+.nav-brand .mobile-pill {
+  display: none;
+}
+
+.nav-actions .nav-logout {
+  display: inline-flex;
+}
+
 .nav-brand span {
   color: var(--accent);
 }
@@ -587,13 +595,49 @@ main {
   justify-content: center;
   gap: 16px;
   padding: 20px;
+  flex-wrap: wrap;
+}
+
+.page-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.page-number-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  min-width: 40px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.page-number-btn:hover:not(:disabled) {
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.3);
+}
+
+.page-number-btn.active,
+.page-number-btn:disabled {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  cursor: default;
+}
+
+.page-break {
+  color: var(--gray-text);
+  font-size: 0.95rem;
 }
 
 #pageInfo {
-  color: var(--gray-text);
-  font-weight: 600;
-  min-width: 60px;
-  text-align: center;
+  display: none;
 }
 
 /* Modal */
@@ -1182,6 +1226,19 @@ main {
   }
 
   .nav-actions .nav-pill {
+    display: none;
+  }
+
+  .nav-actions .nav-logout {
+    display: none;
+  }
+
+  .nav-brand .mobile-pill {
+    display: inline-flex;
+    margin-left: 8px;
+  }
+
+  .nav-actions .nav-logout {
     display: none;
   }
 

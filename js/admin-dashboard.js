@@ -1449,15 +1449,79 @@ function formatDateKey(date) {
 }
 
 // Pagination
+function buildPageButtons(totalPages, currentPage) {
+  const buttons = [];
+  const maxButtons = 20;
+
+  if (totalPages <= maxButtons) {
+    for (let page = 1; page <= totalPages; page++) {
+      buttons.push(page);
+    }
+    return buttons;
+  }
+
+  const visible = new Set([1, 2, totalPages - 1, totalPages]);
+  visible.add(currentPage);
+  if (currentPage - 1 > 1) visible.add(currentPage - 1);
+  if (currentPage + 1 < totalPages) visible.add(currentPage + 1);
+  if (currentPage - 2 > 1) visible.add(currentPage - 2);
+  if (currentPage + 2 < totalPages) visible.add(currentPage + 2);
+
+  const sorted = Array.from(visible).filter(page => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+  const expanded = [];
+  let last = 0;
+
+  sorted.forEach(page => {
+    if (page - last > 1) {
+      if (page - last === 2) {
+        expanded.push(last + 1);
+      } else {
+        expanded.push('...');
+      }
+    }
+    expanded.push(page);
+    last = page;
+  });
+
+  return expanded;
+}
+
 function updatePagination() {
   const totalPages = Math.ceil(groupedBookings.length / itemsPerPage);
-  const pageInfo = document.getElementById('pageInfo');
   const prevBtn = document.getElementById('prevPageBtn');
   const nextBtn = document.getElementById('nextPageBtn');
+  const pageButtons = document.getElementById('pageButtons');
 
-  pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-  prevBtn.disabled = currentPage === 1;
-  nextBtn.disabled = currentPage >= totalPages;
+  if (prevBtn) prevBtn.disabled = currentPage === 1;
+  if (nextBtn) nextBtn.disabled = currentPage >= totalPages || totalPages === 0;
+
+  if (!pageButtons) return;
+  pageButtons.innerHTML = '';
+
+  const pages = buildPageButtons(totalPages, currentPage);
+  pages.forEach(page => {
+    if (page === '...') {
+      const ellipsis = document.createElement('span');
+      ellipsis.className = 'page-break';
+      ellipsis.textContent = '...';
+      pageButtons.appendChild(ellipsis);
+      return;
+    }
+
+    const btn = document.createElement('button');
+    btn.className = 'page-number-btn';
+    btn.textContent = page;
+    btn.disabled = page === currentPage;
+    if (page === currentPage) {
+      btn.classList.add('active');
+    }
+    btn.onclick = () => {
+      currentPage = page;
+      renderTable();
+      updatePagination();
+    };
+    pageButtons.appendChild(btn);
+  });
 }
 
 function openBookingDetails(group) {
@@ -1673,7 +1737,7 @@ function previousPage() {
 }
 
 function nextPage() {
-  const totalPages = Math.ceil(filteredBookings.length / itemsPerPage);
+  const totalPages = Math.ceil(groupedBookings.length / itemsPerPage);
   if (currentPage < totalPages) {
     currentPage++;
     renderTable();
