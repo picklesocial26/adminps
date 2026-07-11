@@ -298,8 +298,14 @@ main {
 
 .earnings-overview-action {
   display: flex;
-  gap: 12px;
+  gap: 16px;
   align-items: center;
+}
+
+.earnings-overview-action .btn-primary {
+  padding: 14px 22px;
+  font-size: 1rem;
+  border-radius: 14px;
 }
 
 .earnings-overview-note {
