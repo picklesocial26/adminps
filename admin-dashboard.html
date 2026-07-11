@@ -44,7 +44,7 @@
         <input type="date" id="filterFrom" class="filter-input" onchange="applyFilters()">
         <div class="dashboard-actions">
           <a class="btn-secondary" href="Logs.html">Logs</a>
-          <a class="btn-secondary" href="Booking Calendar.html">Booking Calendar</a>
+          <a class="btn-secondary" href="Booking%20Calendar.html">Booking Calendar</a>
           <button class="btn-secondary" onclick="openCalendarModal()">Calendar</button>
           <button class="btn-primary refresh-button" onclick="refreshData()">Refresh</button>
         </div>
@@ -115,7 +115,7 @@
     <!-- Pagination -->
     <div class="pagination">
       <button class="btn-secondary" id="prevPageBtn" onclick="previousPage()" disabled>Previous</button>
-      <span id="pageInfo">Page 1</span>
+      <div class="page-buttons" id="pageButtons"></div>
       <button class="btn-secondary" id="nextPageBtn" onclick="nextPage()" disabled>Next</button>
     </div>
   </div>
