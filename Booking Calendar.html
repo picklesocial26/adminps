@@ -604,7 +604,8 @@
         return;
       }
 
-      bookings = (data || []).filter(item => item.booking_date);
+      bookings = (data || [])
+        .filter(item => item.booking_date && item.status !== 'pending');
       const today = new Date();
       const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       selectedDate = todayKey;
