@@ -7,6 +7,7 @@
     { "src": "^/admin-dashboard$", "dest": "/admin-dashboard.html" },
     { "src": "^/logs$", "dest": "/Logs.html" },
     { "src": "^/booking-calendar$", "dest": "/Booking%20Calendar.html" },
+    { "src": "^/Booking(?:%20|\\s)Calendar\\.html$", "dest": "/Booking Calendar.html" },
     { "src": "^/booking-calendar\\.html$", "status": 301, "dest": "/booking-calendar" },
     { "src": "^/favicon\\.ico$", "dest": "/logo.jpeg" },
     { "src": "^/(.+)\\.html$", "status": 301, "dest": "/$1" }
