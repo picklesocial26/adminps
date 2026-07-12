@@ -1,4 +1,4 @@
-﻿// admin-dashboard.js
+// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
@@ -369,32 +369,7 @@ async function updateExpiredBookings(bookings) {
         console.error('Error updating expired bookings:', error);
       } else {
         console.log(`Updated ${expiredIds.length} bookings to expired status`);
-        const expiredBookings = bookings.filter(booking => expiredIds.includes(booking.id));
-        const bookingPayload = expiredBookings.map(booking => ({
-          bookingId: booking.id,
-          reference_code: booking.reference_code,
-          customer_name: booking.customer_name,
-          booking_date: booking.booking_date,
-          booking_time: booking.booking_time || booking.time_slot,
-          court: booking.court || booking.court_name,
-          amount: booking.price || booking.rate
-        }));
-
-        await addAdminLog(
-          'expired',
-          'Booking expired',
-          `Booking expired automatically for ${expiredBookings.length} booking slot(s).`,
-          {
-            bookingIds: expiredIds,
-            bookings: bookingPayload,
-            reference_code: expiredBookings[0]?.reference_code || null,
-            customer_name: expiredBookings[0]?.customer_name || null,
-            booking_date: expiredBookings[0]?.booking_date || null,
-            booking_time: expiredBookings[0]?.booking_time || expiredBookings[0]?.time_slot || null,
-            court: expiredBookings[0]?.court || expiredBookings[0]?.court_name || null,
-            amount: expiredBookings[0]?.price || expiredBookings[0]?.rate || null
-          }
-        );
+        // Expired bookings are only shown on dashboard, not logged
         return true;
       }
     }
