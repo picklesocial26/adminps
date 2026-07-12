@@ -41,10 +41,6 @@ function getAdminLogs() {
   }
 }
 
-function getVisibleBookings(bookings) {
-  return (bookings || []).filter(booking => booking.status !== 'expired');
-}
-
 function saveAdminLogs(logs) {
   try {
     localStorage.setItem(adminLogsStorageKey, JSON.stringify(logs));
@@ -304,7 +300,7 @@ async function loadBookings() {
       return;
     }
 
-    allBookings = getVisibleBookings(bookingsData);
+    allBookings = bookingsData;
     selectedBookingIds.clear();
     console.log('Loaded bookings:', allBookings);
 
