@@ -66,6 +66,9 @@ async function registerPendingBookingNotifications() {
     try {
       const registration = await navigator.serviceWorker.register('service-worker.js');
       
+      // Subscribe to push notifications for background notifications
+      await subscribeToPushNotifications(registration);
+      
       if ('periodicSync' in registration) {
         try {
           await registration.periodicSync.register('check-pending-bookings', {
@@ -96,6 +99,67 @@ async function registerPendingBookingNotifications() {
     } catch (err) {
       console.warn('Wake lock request failed', err);
     }
+  }
+}
+
+async function subscribeToPushNotifications(registration) {
+  if (!('pushManager' in registration)) {
+    console.warn('Push manager not available');
+    return;
+  }
+
+  try {
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      console.log('Already subscribed to push notifications');
+      return;
+    }
+
+    const vapidPublicKey = 'BKb0ZnH3V5BlFvhPxXFMflvp3V1YpzgHvLfmfDGzwOqnGT7M6xHh2YQ_h1rEZ3r5Z4G5K8L9M0N1O2P3Q4R5S6';
+    const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+
+    const newSubscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: convertedVapidKey
+    });
+
+    // Send subscription to server/database
+    await savePushSubscription(newSubscription);
+    console.log('Successfully subscribed to push notifications');
+  } catch (err) {
+    console.warn('Push subscription failed:', err);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function savePushSubscription(subscription) {
+  try {
+    // Store locally
+    localStorage.setItem('pushSubscription', JSON.stringify(subscription));
+    console.log('Push subscription saved locally');
+    
+    // In the future, send to your server:
+    // await fetch('/api/save-push-subscription', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ subscription })
+    // });
+  } catch (err) {
+    console.error('Failed to save push subscription:', err);
   }
 }
 
