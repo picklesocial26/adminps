@@ -48,10 +48,64 @@ function getAdminLogs() {
   }
 }
 
-function requestPendingNotificationPermission() {
+async function requestPendingNotificationPermission() {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
+    try {
+      await Notification.requestPermission();
+    } catch (err) {
+      console.warn('Notification permission request failed', err);
+    }
+  }
+}
+
+async function registerPendingBookingNotifications() {
+  if (typeof window === 'undefined') return;
+
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('service-worker.js');
+    } catch (err) {
+      console.warn('Service worker registration failed', err);
+    }
+  }
+
+  await requestPendingNotificationPermission();
+}
+
+async function notifyPendingBookingOnDevice(title, body, count = 1) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+  if (Notification.permission !== 'granted') {
+    const permission = await requestPendingNotificationPermission();
+    if (permission !== 'granted' && Notification.permission !== 'granted') return;
+  }
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, {
+        body,
+        icon: 'logo.jpeg',
+        badge: 'logo.jpeg',
+        tag: 'pending-booking',
+        renotify: true,
+        requireInteraction: false
+      });
+
+      if (typeof navigator.setAppBadge === 'function') {
+        try {
+          await navigator.setAppBadge(count);
+        } catch (err) {
+          console.warn('App badge update failed', err);
+        }
+      }
+      return;
+    }
+
+    new Notification(title, { body, icon: 'logo.jpeg' });
+  } catch (err) {
+    console.warn('Unable to send device notification', err);
   }
 }
 
@@ -130,13 +184,8 @@ function showPendingBookingAlert(newPendingBookings = []) {
   showToast(`New pending booking: ${customerName} • ${phone}`);
   playPendingBookingSound();
 
-  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-    const notification = new Notification('New Pending Booking', {
-      body: `${customerName} • ${phone} • ${bookingDate} • Check it now!`,
-      icon: 'logo.jpeg'
-    });
-    setTimeout(() => notification.close(), 6000);
-  }
+  const notificationBody = `${customerName} • ${phone} • ${bookingDate} • Check it now!`;
+  notifyPendingBookingOnDevice('New Pending Booking', notificationBody, newPendingBookings.length);
 
   const originalTitle = document.title;
   document.title = 'New Pending Booking • Admin Dashboard';
@@ -370,7 +419,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     updateAdminProfileBadge();
-    requestPendingNotificationPermission();
+    await registerPendingBookingNotifications();
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Test connection
