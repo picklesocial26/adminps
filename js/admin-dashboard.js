@@ -72,7 +72,9 @@ async function registerPendingBookingNotifications() {
             minInterval: 5 * 60 * 1000
           });
         } catch (err) {
-          console.warn('Periodic sync registration failed', err);
+          if (err && err.name !== 'NotAllowedError') {
+            console.warn('Periodic sync registration failed', err);
+          }
         }
       }
       
@@ -809,15 +811,6 @@ function createCell(text) {
   return cell;
 }
 
-function toggleSelectAll(element) {
-  if (element.checked) {
-    groupedBookings.forEach(group => group.ids.forEach(id => selectedBookingIds.add(id)));
-  } else {
-    selectedBookingIds.clear();
-  }
-  renderTable();
-}
-
 function toggleRowSelection(bookingId) {
   if (selectedBookingIds.has(bookingId)) {
     selectedBookingIds.delete(bookingId);
@@ -833,7 +826,6 @@ function updateBulkActions() {
   const count = selectedBookingIds.size;
   selectedCount.textContent = `${count} selected`;
   bulkBar.style.display = count > 0 ? 'flex' : 'none';
-  document.getElementById('selectAllCheckbox').checked = count > 0 && filteredBookings.every(b => selectedBookingIds.has(b.id));
 }
 
 function getSelectedBookings() {
@@ -2471,39 +2463,16 @@ function copyConfirmationText() {
     showToast('No confirmation text to copy');
     return;
   }
-  
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Booking info copied to clipboard!');
-    
-    // Close the modal
-    closeBookingConfirmationModal();
-    
-    // Detect if mobile device
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    
-    if (isMobile) {
-      // On mobile, try to open Business Suite app or Messenger
-      // For iOS
-      if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-        window.location.href = 'fb://'; // Opens Facebook app
-      } 
-      // For Android
-      else {
-        window.location.href = 'fb://'; // Opens Facebook app
-      }
-      
-      // Fallback to web after a delay if app doesn't open
-      setTimeout(() => {
-        window.open('https://business.facebook.com/latest/inbox/messenger', '_blank');
-      }, 1500);
-    } else {
-      // On desktop, open the web URL
-      window.open('https://business.facebook.com/latest/inbox/messenger', '_blank');
-    }
-  }).catch(err => {
-    console.error('Failed to copy:', err);
-    showToast('Failed to copy booking info');
-  });
+
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      showToast('Booking info copied to clipboard!');
+      closeBookingConfirmationModal();
+    })
+    .catch(err => {
+      console.error('Failed to copy:', err);
+      showToast('Failed to copy booking info');
+    });
 }
 
 function openTodayModal() {
