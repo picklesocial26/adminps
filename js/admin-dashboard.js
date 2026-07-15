@@ -69,22 +69,35 @@ function playPendingBookingSound() {
       ctx.resume().catch(() => {});
     }
 
+    if (navigator.vibrate) {
+      navigator.vibrate([180, 90, 180]);
+    }
+
     const now = ctx.currentTime;
-    const oscillator = ctx.createOscillator();
+    const oscillator1 = ctx.createOscillator();
+    const oscillator2 = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    oscillator.type = 'triangle';
-    oscillator.frequency.setValueAtTime(880, now);
-    oscillator.frequency.exponentialRampToValueAtTime(1320, now + 0.14);
+    oscillator1.type = 'triangle';
+    oscillator1.frequency.setValueAtTime(1040, now);
+    oscillator1.frequency.exponentialRampToValueAtTime(1480, now + 0.14);
 
-    gain.gain.setValueAtTime(0.001, now);
-    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    oscillator2.type = 'square';
+    oscillator2.frequency.setValueAtTime(1560, now + 0.05);
+    oscillator2.frequency.exponentialRampToValueAtTime(1880, now + 0.16);
 
-    oscillator.connect(gain);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+
+    oscillator1.connect(gain);
+    oscillator2.connect(gain);
     gain.connect(ctx.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.32);
+
+    oscillator1.start(now);
+    oscillator2.start(now);
+    oscillator1.stop(now + 0.34);
+    oscillator2.stop(now + 0.34);
   } catch (err) {
     console.warn('Unable to play pending booking sound', err);
   }
