@@ -1064,6 +1064,66 @@ main {
   margin-top: 4px;
 }
 
+/* Pending booking alert */
+.pending-alert {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(15, 19, 25, 0.96);
+  color: #f8fafc;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  transform: translateY(-20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.pending-alert.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pending-alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pending-alert-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fda4af;
+}
+
+.pending-alert-message {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #f8fafc;
+}
+
+.pending-alert-action {
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #be185d, #ec4899);
+  color: white;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* Toast */
 .toast {
   position: fixed;
