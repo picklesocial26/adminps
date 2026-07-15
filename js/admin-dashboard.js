@@ -64,13 +64,39 @@ async function registerPendingBookingNotifications() {
 
   if ('serviceWorker' in navigator) {
     try {
-      await navigator.serviceWorker.register('service-worker.js');
+      const registration = await navigator.serviceWorker.register('service-worker.js');
+      
+      if ('periodicSync' in registration) {
+        try {
+          await registration.periodicSync.register('check-pending-bookings', {
+            minInterval: 5 * 60 * 1000
+          });
+        } catch (err) {
+          console.warn('Periodic sync registration failed', err);
+        }
+      }
+      
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'PENDING_BOOKING_CHECK') {
+            trackPendingBookingNotifications(event.data.bookings);
+          }
+        });
+      }
     } catch (err) {
       console.warn('Service worker registration failed', err);
     }
   }
 
   await requestPendingNotificationPermission();
+  
+  if ('wakeLock' in navigator) {
+    try {
+      await navigator.wakeLock.request('screen');
+    } catch (err) {
+      console.warn('Wake lock request failed', err);
+    }
+  }
 }
 
 async function notifyPendingBookingOnDevice(title, body, count = 1) {
@@ -444,7 +470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadBookings();
     updateEarnings();
 
-    setInterval(async () => {
+    const refreshPendingBookings = async () => {
       if (!supabaseClient) return;
 
       try {
@@ -468,7 +494,34 @@ document.addEventListener('DOMContentLoaded', async () => {
       } catch (err) {
         console.error('Background booking refresh failed:', err);
       }
-    }, 15000);
+    };
+
+    // Prevent PWA from being suspended when backgrounded
+    if ('wakeLock' in navigator) {
+      document.addEventListener('visibilitychange', async () => {
+        if (!document.hidden && 'wakeLock' in navigator) {
+          try {
+            await navigator.wakeLock.request('screen');
+          } catch (err) {
+            console.warn('Wake lock renewal failed', err);
+          }
+        }
+      });
+    }
+
+    // Instant refresh when PWA comes back to foreground
+    window.addEventListener('focus', () => {
+      refreshPendingBookings();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        refreshPendingBookings();
+      }
+    });
+
+    // Aggressive polling every 2 seconds
+    setInterval(refreshPendingBookings, 2000);
   } catch (err) {
     console.error('Initialization error:', err);
     showToast('Failed to connect to database');
