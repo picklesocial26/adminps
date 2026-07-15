@@ -13,6 +13,13 @@
 </head>
 
 <body>
+<div id="pendingBookingAlert" class="pending-alert" role="status" aria-live="polite" onclick="scrollToPendingBookings()">
+  <div class="pending-alert-content">
+    <div class="pending-alert-title">New Pending Booking</div>
+    <div class="pending-alert-message" id="pendingBookingAlertMessage">Check it now!</div>
+  </div>
+  <button type="button" class="pending-alert-action" onclick="scrollToPendingBookings(event)">View Now</button>
+</div>
 <div class="app">
 <nav>
   <div class="nav-brand">
