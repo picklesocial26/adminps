@@ -11,6 +11,13 @@ let currentBookingDetailsGroup = null;
 let calendarViewDate = new Date();
 let selectedCalendarDate = null;
 const adminLogsStorageKey = 'pickleAdminLogs';
+const pendingNotificationState = {
+  knownPendingIds: new Set(),
+  hasInitialized: false,
+  lastAlertAt: 0,
+  cooldownMs: 10000
+};
+let pendingAlertAudioContext = null;
 
 function getCurrentAdmin() {
   try {
@@ -38,6 +45,120 @@ function getAdminLogs() {
   } catch (err) {
     console.error('Failed to load admin logs:', err);
     return [];
+  }
+}
+
+function requestPendingNotificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+function playPendingBookingSound() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    if (!pendingAlertAudioContext) {
+      pendingAlertAudioContext = new AudioContextClass();
+    }
+
+    const ctx = pendingAlertAudioContext;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    const now = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(880, now);
+    oscillator.frequency.exponentialRampToValueAtTime(1320, now + 0.14);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.32);
+  } catch (err) {
+    console.warn('Unable to play pending booking sound', err);
+  }
+}
+
+function showPendingBookingAlert(newPendingBookings = []) {
+  if (!newPendingBookings.length) return;
+
+  const latest = newPendingBookings[0] || {};
+  const customerName = latest.customer_name || 'A customer';
+  const phone = formatPhone(latest.phone_number || latest.phone || 'N/A');
+  const bookingDate = latest.booking_date || 'soon';
+  const bookingTime = latest.time_slot || latest.booking_time || '';
+  const summary = newPendingBookings.length === 1
+    ? `${customerName} • ${phone} • ${bookingDate}${bookingTime ? ` • ${bookingTime}` : ''}`
+    : `${newPendingBookings.length} new pending bookings. Latest: ${customerName} • ${phone}`;
+
+  const alertBox = document.getElementById('pendingBookingAlert');
+  const alertMessage = document.getElementById('pendingBookingAlertMessage');
+
+  if (alertBox && alertMessage) {
+    alertMessage.textContent = summary;
+    alertBox.classList.add('show');
+    clearTimeout(showPendingBookingAlert.hideTimer);
+    showPendingBookingAlert.hideTimer = setTimeout(() => {
+      alertBox.classList.remove('show');
+    }, 6000);
+  }
+
+  showToast(`New pending booking: ${customerName} • ${phone}`);
+  playPendingBookingSound();
+
+  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+    const notification = new Notification('New Pending Booking', {
+      body: `${customerName} • ${phone} • ${bookingDate} • Check it now!`,
+      icon: 'logo.jpeg'
+    });
+    setTimeout(() => notification.close(), 6000);
+  }
+
+  const originalTitle = document.title;
+  document.title = 'New Pending Booking • Admin Dashboard';
+  setTimeout(() => {
+    document.title = originalTitle;
+  }, 6000);
+}
+
+showPendingBookingAlert.hideTimer = null;
+
+function scrollToPendingBookings(event) {
+  if (event) event.stopPropagation();
+  const bookingsSection = document.querySelector('.bookings-section');
+  if (bookingsSection) {
+    bookingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function trackPendingBookingNotifications(bookings = []) {
+  const pendingBookings = (bookings || []).filter(booking => (booking.status || '').toLowerCase() === 'pending');
+  const currentIds = new Set(pendingBookings.map(booking => booking.id));
+
+  if (!pendingNotificationState.hasInitialized) {
+    pendingNotificationState.knownPendingIds = currentIds;
+    pendingNotificationState.hasInitialized = true;
+    return;
+  }
+
+  const newPendingBookings = pendingBookings.filter(booking => !pendingNotificationState.knownPendingIds.has(booking.id));
+  pendingNotificationState.knownPendingIds = currentIds;
+
+  const now = Date.now();
+  if (newPendingBookings.length && now - pendingNotificationState.lastAlertAt >= pendingNotificationState.cooldownMs) {
+    pendingNotificationState.lastAlertAt = now;
+    showPendingBookingAlert(newPendingBookings);
   }
 }
 
@@ -236,6 +357,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     updateAdminProfileBadge();
+    requestPendingNotificationPermission();
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Test connection
@@ -261,10 +383,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateEarnings();
 
     setInterval(async () => {
-      if (!supabaseClient || allBookings.length === 0) return;
-      const expiredUpdated = await updateExpiredBookings(allBookings);
-      if (expiredUpdated) {
-        await loadBookings();
+      if (!supabaseClient) return;
+
+      try {
+        const { data, error } = await supabaseClient
+          .from('bookings')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const bookingsData = data || [];
+        trackPendingBookingNotifications(bookingsData);
+
+        const previousSnapshot = JSON.stringify(allBookings);
+        const nextSnapshot = JSON.stringify(bookingsData);
+        if (previousSnapshot !== nextSnapshot) {
+          allBookings = bookingsData;
+          applyFilters();
+          refreshCalendarView();
+        }
+      } catch (err) {
+        console.error('Background booking refresh failed:', err);
       }
     }, 15000);
   } catch (err) {
@@ -302,6 +442,7 @@ async function loadBookings() {
 
     allBookings = bookingsData;
     selectedBookingIds.clear();
+    trackPendingBookingNotifications(bookingsData);
     console.log('Loaded bookings:', allBookings);
 
     applyFilters();
