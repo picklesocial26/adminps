@@ -591,14 +591,6 @@
     }
   });
 
-  $("#voidLastSaleBtn").addEventListener("click", async ()=>{
-    if (!sales.length) {
-      toast("No sale to void");
-      return;
-    }
-    await voidLastSale(sales[0].id);
-  });
-
   /* ---------------- Receipt modal ---------------- */
   function openReceipt(sale){
     const itemsHtml = sale.items.map(i=>
