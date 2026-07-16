@@ -12,6 +12,7 @@
 
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="js/supabase-config.js" defer></script>
 <script src="js/countr-pos.js" defer></script>
 </head>
@@ -142,7 +143,6 @@
           <div class="checkout-foot">
             <button class="btn btn-primary btn-block" id="checkoutBtn" disabled>Complete Sale</button>
             <button class="btn btn-ghost btn-block" id="clearCartBtn" style="margin-top:8px;">Clear order</button>
-            <button class="btn btn-danger btn-block" id="voidLastSaleBtn" style="margin-top:8px;">Void last sale</button>
           </div>
         </div>
       </div>
@@ -179,7 +179,7 @@
     <!-- SALES HISTORY -->
     <div class="view" id="view-sales" hidden>
       <div class="panel">
-        <div class="panel-head"><h3>All transactions</h3><span class="sub" id="salesCount"></span></div>
+        <div class="panel-head"><h3>All transactions</h3><span class="sub" id="salesCount"></span><button class="btn btn-secondary" id="exportSalesBtn">Export Excel</button></div>
         <table>
           <thead>
             <tr><th>Receipt</th><th>Time</th><th>Items</th><th>Payment</th><th>Total</th><th></th></tr>
