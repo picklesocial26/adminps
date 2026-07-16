@@ -26,6 +26,7 @@
       <div class="brand-mark">C</div>
       <div class="brand-text"><b>COUNTR</b><span>Point of Sale</span></div>
     </div>
+    <button class="sidebar-close" id="closeSidebarBtn" aria-label="Close menu">×</button>
     <nav class="primary" id="nav">
       <button class="nav-item" data-view="dashboard">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
@@ -104,7 +105,10 @@
         </div>
       </div>
       <div class="panel" style="margin-top:16px;">
-        <div class="panel-head"><h3>Quantity sold — today</h3></div>
+        <div class="panel-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <h3>Quantity sold — <span id="productSalesTitle">today</span></h3>
+          <button class="btn btn-secondary btn-sm" id="toggleSalesDayBtn">Yesterday</button>
+        </div>
         <div style="padding:18px;" id="productSalesList"></div>
       </div>
     </div>
