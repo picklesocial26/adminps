@@ -17,6 +17,7 @@
   let saleCounter = 1024;
   let activeCategory = "All";
   let payMethod = "cash";
+  let productSalesDay = "today";
   let supabaseClient = null;
   let hasSupabaseData = false;
 
@@ -265,6 +266,7 @@
     if(btn) showView(btn.dataset.view);
   });
   $("#menuBtn").addEventListener("click", ()=> $("#sidebar").classList.toggle("open"));
+  $("#closeSidebarBtn").addEventListener("click", ()=> $("#sidebar").classList.remove("open"));
 
   /* ---------------- Clock ---------------- */
   function tickClock(){
@@ -320,8 +322,12 @@
         </div>`).join("");
     }
 
-    // quantity sold and revenue per product today
-    const dailySales = sales.filter(t => new Date(t.time).toDateString() === new Date().toDateString());
+    // quantity sold and revenue per product for the selected day
+    const salesRefDate = new Date();
+    if (productSalesDay === "yesterday") salesRefDate.setDate(salesRefDate.getDate() - 1);
+    const dayLabel = productSalesDay === "yesterday" ? "yesterday" : "today";
+    $("#productSalesTitle").textContent = dayLabel;
+    const dailySales = sales.filter(t => new Date(t.time).toDateString() === salesRefDate.toDateString());
     const productSales = {};
     dailySales.forEach(t=>{
       t.items.forEach(i=>{
@@ -341,7 +347,8 @@
     const totalEarnedToday = dailySales.reduce((sum,t)=> sum + Number(t.total || 0), 0);
 
     if (!Object.keys(productSales).length) {
-      $("#productSalesList").innerHTML = `<div class="empty" style="padding:24px 20px;"><p>No products sold today yet.</p></div>`;
+      const message = productSalesDay === "yesterday" ? "No products sold yesterday." : "No products sold today yet.";
+      $("#productSalesList").innerHTML = `<div class="empty" style="padding:24px 20px;"><p>${message}</p></div>`;
     } else {
       const productSalesHtml = Object.values(productSales)
         .sort((a,b)=>b.revenue - a.revenue)
@@ -865,6 +872,36 @@
   });
 
   /* ---------------- Sales History ---------------- */
+  function exportSalesToExcel(){
+    if (typeof XLSX === 'undefined') {
+      toast('Office export unavailable. Ensure XLSX is loaded.', false);
+      return;
+    }
+
+    const rows = [
+      ['Receipt', 'Time', 'Items', 'Payment', 'Total', 'Cashier']
+    ];
+
+    sales.forEach(s => {
+      const itemCount = s.items.reduce((a,i)=>a+i.qty,0);
+      rows.push([
+        `#${s.id}`,
+        s.time.toLocaleString(),
+        itemCount,
+        s.payment,
+        s.total.toFixed(2),
+        s.cashier || 'Pickle Social'
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sales');
+    const fileName = `COUNTR-Sales-History-${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    toast('Sales export ready', true);
+  }
+
   function renderSales(){
     $("#salesCount").textContent = sales.length ? `${sales.length} total` : "";
     $("#salesEmpty").hidden = sales.length>0;
@@ -894,6 +931,14 @@
     renderDashboard();
     renderInventory();
     renderSales();
+    const exportBtn = $("#exportSalesBtn");
+    if (exportBtn) exportBtn.addEventListener("click", exportSalesToExcel);
+    const toggleBtn = $("#toggleSalesDayBtn");
+    if (toggleBtn) toggleBtn.addEventListener("click", () => {
+      productSalesDay = productSalesDay === "today" ? "yesterday" : "today";
+      toggleBtn.textContent = productSalesDay === "today" ? "Yesterday" : "Today";
+      renderDashboard();
+    });
     showView(initialView);
   })();
 })();
