@@ -661,7 +661,7 @@
       let status = `<span class="badge badge-ok"><i class="badge-dot"></i>In stock</span>`;
       if(p.stock===0) status = `<span class="badge badge-bad"><i class="badge-dot"></i>Out of stock</span>`;
       else if(p.stock<=p.threshold) status = `<span class="badge badge-warn"><i class="badge-dot"></i>Low stock</span>`;
-      return `<tr>
+      return `<tr draggable="true" data-id="${p.id}" class="draggable-row">
         <td><b>${p.name}</b></td>
         <td class="mono">${p.sku}</td>
         <td>${p.category}</td>
@@ -678,6 +678,56 @@
     }).join("");
     renderStockLogs();
   }
+
+  function reorderInventory(sourceId, destId){
+    const sourceIndex = products.findIndex(p=>p.id===sourceId);
+    const destIndex = products.findIndex(p=>p.id===destId);
+    if(sourceIndex === -1 || destIndex === -1 || sourceIndex === destIndex) return;
+    const [moved] = products.splice(sourceIndex, 1);
+    products.splice(destIndex, 0, moved);
+    saveLocalData();
+    renderInventory();
+    try { syncPosData(); } catch (err) { console.warn('Unable to sync product order', err); }
+  }
+
+  $("#invTableBody").addEventListener("dragstart", e=>{
+    const tr = e.target.closest("tr");
+    if(!tr) return;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", tr.dataset.id || "");
+    tr.classList.add("dragging");
+  });
+
+  $("#invTableBody").addEventListener("dragend", e=>{
+    const tr = e.target.closest("tr");
+    if(tr) tr.classList.remove("dragging");
+    $$("#invTableBody tr").forEach(row=>row.classList.remove("drag-over"));
+  });
+
+  $("#invTableBody").addEventListener("dragover", e=>{
+    e.preventDefault();
+    const tr = e.target.closest("tr");
+    if(!tr) return;
+    tr.classList.add("drag-over");
+    e.dataTransfer.dropEffect = "move";
+  });
+
+  $("#invTableBody").addEventListener("dragleave", e=>{
+    const tr = e.target.closest("tr");
+    if(tr) tr.classList.remove("drag-over");
+  });
+
+  $("#invTableBody").addEventListener("drop", e=>{
+    e.preventDefault();
+    const target = e.target.closest("tr");
+    if(!target) return;
+    target.classList.remove("drag-over");
+    const sourceId = Number(e.dataTransfer.getData("text/plain"));
+    const destId = Number(target.dataset.id);
+    if(sourceId && destId && sourceId !== destId){
+      reorderInventory(sourceId, destId);
+    }
+  });
 
   function renderStockLogs(){
     if(stockLogs.length===0){
