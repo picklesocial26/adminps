@@ -898,14 +898,16 @@
     }
 
     const rows = [
-      ['Receipt', 'Time', 'Items', 'Payment', 'Total', 'Cashier']
+      ['Receipt', 'Date', 'Time', 'Items', 'Payment', 'Total', 'Cashier']
     ];
 
     sales.forEach(s => {
+      const saleDate = new Date(s.time);
       const itemCount = s.items.reduce((a,i)=>a+i.qty,0);
       rows.push([
         `#${s.id}`,
-        s.time.toLocaleString(),
+        saleDate.toLocaleDateString(),
+        saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
         itemCount,
         s.payment,
         s.total.toFixed(2),
