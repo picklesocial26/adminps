@@ -179,6 +179,16 @@
     }
   }
 
+  async function deleteProductRemote(productId){
+    const client = await getSupabaseClient();
+    if (!client) return;
+    try {
+      await client.from("pos_products").delete().eq("id", productId);
+    } catch (err) {
+      console.warn("Unable to delete product from Supabase", err);
+    }
+  }
+
   function createStockLogEntry(product, qty, note) {
     const entry = {
       id: Date.now(),
@@ -862,11 +872,20 @@
       }
     }
     if(b.dataset.act==="del"){
-      if(confirm(`Remove "${p.name}" from inventory?`)){ 
+      if(confirm(`Remove "${p.name}" from inventory?`)){
         products = products.filter(pp=>pp.id!==id);
         cart = cart.filter(c=>c.productId!==id);
+        saveLocalData();
+        await deleteProductRemote(id);
+        try {
+          await syncPosData();
+        } catch (err) {
+          console.warn("Could not sync product deletion to Supabase", err);
+        }
         renderInventory();
-        toast(`"${p.name}" removed`);
+        renderProducts();
+        renderDashboard();
+        toast(`"${p.name}" removed`, true);
       }
     }
   });
