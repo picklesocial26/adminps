@@ -928,9 +928,11 @@
     $("#salesEmpty").hidden = sales.length>0;
     $("#salesTableBody").innerHTML = sales.map(s=>{
       const itemCount = s.items.reduce((a,i)=>a+i.qty,0);
+      const saleDate = new Date(s.time);
       return `<tr>
         <td class="mono">#${s.id}</td>
-        <td>${s.time.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${saleDate.toLocaleDateString()}</td>
+        <td>${saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td>
         <td>${itemCount} item${itemCount!==1?'s':''}</td>
         <td style="text-transform:capitalize;">${s.payment}</td>
         <td class="mono"><b>${money(s.total)}</b></td>
