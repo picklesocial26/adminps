@@ -43,7 +43,7 @@
   function normalizeSale(item){
     return {
       id: Number(item.id || 0),
-      time: item.time ? (typeof item.time === "string" ? new Date(item.time) : new Date(item.time)) : new Date(),
+      time: item.time ? (typeof item.time === "string" ? new Date(item.time) : item.time instanceof Date ? item.time : new Date(item.time)) : new Date(item.created_at || new Date().toISOString()),
       items: Array.isArray(item.items) ? item.items : [],
       subtotal: Number(item.subtotal || 0),
       tax: Number(item.tax || 0),
@@ -932,7 +932,7 @@
       rows.push([
         `#${s.id}`,
         saleDate.toLocaleDateString(),
-        saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+        saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}),
         itemCount,
         s.payment,
         s.total.toFixed(2),
@@ -957,7 +957,7 @@
       return `<tr>
         <td class="mono">#${s.id}</td>
         <td>${saleDate.toLocaleDateString()}</td>
-        <td>${saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</td>
         <td>${itemCount} item${itemCount!==1?'s':''}</td>
         <td style="text-transform:capitalize;">${s.payment}</td>
         <td class="mono"><b>${money(s.total)}</b></td>
