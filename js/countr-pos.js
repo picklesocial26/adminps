@@ -288,10 +288,24 @@
   /* ---------------- Dashboard ---------------- */
   function renderDashboard(){
     const total = sales.reduce((s,t)=>s+t.total,0);
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    weekStart.setHours(0,0,0,0);
+    const weekTotal = sales.reduce((sum,s)=>{
+      const time = new Date(s.time);
+      return time >= weekStart && time <= today ? sum + s.total : sum;
+    },0);
+    const weekCount = sales.reduce((count,s)=>{
+      const time = new Date(s.time);
+      return time >= weekStart && time <= today ? count + 1 : count;
+    },0);
     const units = sales.reduce((s,t)=> s + t.items.reduce((a,i)=>a+i.qty,0), 0);
     const avg = sales.length ? total/sales.length : 0;
     $("#statSales").textContent = money(total);
     $("#statSalesSub").textContent = sales.length + (sales.length===1 ? " transaction":" transactions");
+    $("#statSalesWeek").textContent = money(weekTotal);
+    $("#statSalesWeekSub").textContent = weekCount + (weekCount===1 ? " transaction":" transactions");
     $("#statAvg").textContent = money(avg);
     $("#statUnits").textContent = units;
     const low = products.filter(p=> !isRentProduct(p) && p.stock<=p.threshold);
