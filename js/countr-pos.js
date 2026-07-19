@@ -281,9 +281,12 @@
   /* ---------------- Clock ---------------- */
   function tickClock(){
     const now = new Date();
-    $("#clock").textContent = now.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+    const clockEl = $("#clock");
+    if (!clockEl) return;
+    clockEl.textContent = now.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
   }
-  setInterval(tickClock, 1000); tickClock();
+  setInterval(tickClock, 1000);
+  tickClock();
 
   /* ---------------- Dashboard ---------------- */
   function renderDashboard(){
