@@ -53,6 +53,7 @@
       tendered: Number(item.tendered || 0),
       change: Number(item.change || 0),
       cashier: item.cashier || "Pickle Social",
+      reference_code: item.reference_code || null,
     };
   }
 
@@ -174,6 +175,7 @@
           tendered: sale.tendered,
           change: sale.change,
           cashier: sale.cashier,
+          reference_code: sale.reference_code || null,
         }], { onConflict: "id" });
       }
     } catch (err) {
@@ -787,7 +789,7 @@
         ${sale.payment==="cash" ? `
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);padding:6px 0 0;"><span>Cash tendered</span><span class="mono">${money(sale.tendered)}</span></div>
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);"><span>Change</span><span class="mono">${money(sale.change)}</span></div>`
-        : `<div style="font-size:12px;color:var(--ink-soft);padding-top:6px;">Paid via GCash</div>`}
+        : `<div style="font-size:12px;color:var(--ink-soft);padding-top:6px;">Paid via GCash${sale.reference_code ? ` · Ref: <span class=\"mono\">${sale.reference_code}</span>` : ''}</div>`}
       </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
         <button class="btn btn-danger" id="receiptVoidBtn">Void sale</button>
@@ -1056,7 +1058,7 @@
     }
 
     const rows = [
-      ['Receipt', 'Date', 'Time', 'Items', 'Payment', 'Total', 'Cashier']
+      ['Receipt', 'Date', 'Time', 'Items', 'Payment', 'Ref', 'Total', 'Cashier']
     ];
 
     sales.forEach(s => {
@@ -1068,6 +1070,7 @@
         saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}),
         itemCount,
         s.payment,
+        s.reference_code || '',
         s.total.toFixed(2),
         s.cashier || 'Pickle Social'
       ]);
@@ -1093,6 +1096,7 @@
         <td>${saleDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</td>
         <td>${itemCount} item${itemCount!==1?'s':''}</td>
         <td style="text-transform:capitalize;">${s.payment}</td>
+        <td class="mono">${s.reference_code ? s.reference_code : ''}</td>
         <td class="mono"><b>${money(s.total)}</b></td>
         <td style="text-align:right;"><button class="btn btn-ghost btn-sm" data-id="${s.id}">View</button></td>
       </tr>`;
