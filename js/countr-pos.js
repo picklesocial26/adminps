@@ -345,6 +345,48 @@
         return sum + catSalesAmount;
       }, 0);
     }
+
+    function getCategoryItemCount(category, period){
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23,59,59,999);
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay());
+      weekStart.setHours(0,0,0,0);
+
+      const selectedDate = selectedDates[category];
+      let refDate = new Date(today);
+      let refStartDay = startOfDay;
+      let refEndDay = endOfDay;
+      if (selectedDate) {
+        refDate = new Date(selectedDate);
+        refStartDay = new Date(refDate);
+        refStartDay.setHours(0,0,0,0);
+        refEndDay = new Date(refDate);
+        refEndDay.setHours(23,59,59,999);
+      }
+
+      let filteredSales = sales.filter(s => {
+        const saleTime = new Date(s.time);
+        if (period === "today") return saleTime >= refStartDay && saleTime <= refEndDay;
+        if (period === "weekly") return saleTime >= weekStart && saleTime <= endOfDay;
+        if (period === "cash") return s.payment === "cash" && saleTime >= refStartDay && saleTime <= refEndDay;
+        if (period === "gcash") return s.payment === "gcash" && saleTime >= refStartDay && saleTime <= refEndDay;
+        return false;
+      });
+
+      return filteredSales.reduce((sum, s) => {
+        const catQty = s.items
+          .filter(item => {
+            const p = products.find(pp => pp.id === item.productId);
+            return p && p.category === category;
+          })
+          .reduce((q, item) => q + (Number(item.qty) || 0), 0);
+        return sum + catQty;
+      }, 0);
+    }
     
     // Setup category cards
     const categories = ["Beverages", "Snacks", "Rent"];
@@ -394,6 +436,9 @@
       const value = getCategorySales(cat, period);
       const valueEl = card.querySelector(".stat-value");
       if (valueEl) valueEl.textContent = money(value);
+      const count = getCategoryItemCount(cat, period);
+      const countEl = card.querySelector(".stat-count");
+      if (countEl) countEl.textContent = `${count} sold`;
     }
 
     // Low stock list
