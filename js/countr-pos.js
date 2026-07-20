@@ -217,8 +217,6 @@
     sale.items.forEach(item => {
       const product = products.find(p => p.id === item.productId);
       if (!product) return;
-      const previousStock = product.stock;
-      product.stock += Number(item.qty || 0);
       const logEntry = createStockLogEntry(product, Number(item.qty || 0), `Voided sale #${sale.id}`);
       product.stock = logEntry.new_stock;
     });
