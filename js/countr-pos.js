@@ -3,7 +3,7 @@
 
   /* ---------------- Data (Supabase-backed with local fallback) ---------------- */
   const CATS = {
-    "Beverages":"#D6336C", "Snacks":"#E8598E", "Rent":"#C2255C"
+    "Beverages":"#2563EB", "Snacks":"#EC4899", "Rent":"#F59E0B"
   };
 
   const DEFAULT_PRODUCTS = [];
@@ -20,6 +20,7 @@
   let productSalesDay = "today";
   let supabaseClient = null;
   let hasSupabaseData = false;
+  let selectedDates = {Beverages: null, Snacks: null, Rent: null};
 
   /* ---------------- Helpers ---------------- */
   const $ = (sel, root=document) => root.querySelector(sel);
@@ -119,7 +120,18 @@
     try {
       const { data: remoteProducts, error: productError } = await client.from("pos_products").select("*").order("id", { ascending: true });
       if (!productError && Array.isArray(remoteProducts)) {
+        const localOrder = products.map(p => p.id);
         products = remoteProducts.map(normalizeProduct);
+        if (localOrder.length) {
+          products.sort((a, b) => {
+            const ai = localOrder.indexOf(a.id);
+            const bi = localOrder.indexOf(b.id);
+            if (ai === -1 && bi === -1) return 0;
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+          });
+        }
         hasSupabaseData = true;
       }
 
@@ -288,37 +300,104 @@
 
   /* ---------------- Dashboard ---------------- */
   function renderDashboard(){
-    const total = sales.reduce((s,t)=>s+t.total,0);
-    const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay());
-    weekStart.setHours(0,0,0,0);
-    const weekTotal = sales.reduce((sum,s)=>{
-      const time = new Date(s.time);
-      return time >= weekStart && time <= today ? sum + s.total : sum;
-    },0);
-    const weekCount = sales.reduce((count,s)=>{
-      const time = new Date(s.time);
-      return time >= weekStart && time <= today ? count + 1 : count;
-    },0);
-    const cashTotal = sales.filter(s => s.payment === 'cash').reduce((sum,s)=> sum + s.total, 0);
-    const gcashTotal = sales.filter(s => s.payment === 'gcash').reduce((sum,s)=> sum + s.total, 0);
-    const cashCount = sales.filter(s => s.payment === 'cash').length;
-    const gcashCount = sales.filter(s => s.payment === 'gcash').length;
-    const units = sales.reduce((s,t)=> s + t.items.reduce((a,i)=>a+i.qty,0), 0);
-    const avg = sales.length ? total/sales.length : 0;
-    $("#statSales").textContent = money(total);
-    $("#statSalesSub").textContent = sales.length + (sales.length===1 ? " transaction":" transactions");
-    $("#statSalesWeek").textContent = money(weekTotal);
-    $("#statSalesWeekSub").textContent = weekCount + (weekCount===1 ? " transaction":" transactions");
-    $("#statCashSales").textContent = money(cashTotal);
-    $("#statCashSalesSub").textContent = cashCount + (cashCount===1 ? " transaction":" transactions");
-    $("#statGcashSales").textContent = money(gcashTotal);
-    $("#statGcashSalesSub").textContent = gcashCount + (gcashCount===1 ? " transaction":" transactions");
-    $("#statAvg").textContent = money(avg);
-    $("#statUnits").textContent = units;
+    // Category sales by period and date
+    function getCategorySales(category, period){
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23,59,59,999);
+      
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay());
+      weekStart.setHours(0,0,0,0);
+      
+      // Check if a specific date is selected for this category
+      const selectedDate = selectedDates[category];
+      let refDate = new Date(today);
+      let refStartDay = startOfDay;
+      let refEndDay = endOfDay;
+      
+      if (selectedDate) {
+        refDate = new Date(selectedDate);
+        refStartDay = new Date(refDate);
+        refStartDay.setHours(0,0,0,0);
+        refEndDay = new Date(refDate);
+        refEndDay.setHours(23,59,59,999);
+      }
+      
+      let filteredSales = sales.filter(s => {
+        const saleTime = new Date(s.time);
+        if (period === "today") return saleTime >= refStartDay && saleTime <= refEndDay;
+        if (period === "weekly") return saleTime >= weekStart && saleTime <= endOfDay;
+        if (period === "cash") return s.payment === "cash" && saleTime >= refStartDay && saleTime <= refEndDay;
+        if (period === "gcash") return s.payment === "gcash" && saleTime >= refStartDay && saleTime <= refEndDay;
+        return false;
+      });
+      
+      return filteredSales.reduce((sum, s) => {
+        const catSalesAmount = s.items
+          .filter(item => {
+            const p = products.find(pp => pp.id === item.productId);
+            return p && p.category === category;
+          })
+          .reduce((itemSum, item) => itemSum + (item.price * item.qty), 0);
+        return sum + catSalesAmount;
+      }, 0);
+    }
+    
+    // Setup category cards
+    const categories = ["Beverages", "Snacks", "Rent"];
+    categories.forEach(cat => {
+      const cards = $$(".category-card");
+      const card = cards.find(c => c.dataset.category === cat);
+      if (!card) return;
+      
+      const calendarBtn = card.querySelector(".calendar-btn");
+      const datePicker = card.querySelector(".card-date-picker");
+      if (calendarBtn && datePicker) {
+        calendarBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof datePicker.showPicker === "function") {
+            datePicker.showPicker();
+          } else {
+            datePicker.click();
+          }
+        };
+      }
+      
+      if (datePicker) {
+        datePicker.onchange = (e) => {
+          selectedDates[cat] = e.target.value || null;
+          updateCategoryDisplay(cat, card);
+        };
+      }
+      
+      const dateButtons = card.querySelectorAll(".date-btn");
+      dateButtons.forEach(btn => {
+        btn.classList.remove("active");
+        btn.addEventListener("click", () => {
+          dateButtons.forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          updateCategoryDisplay(cat, card);
+        });
+      });
+      
+      // Set initial value
+      updateCategoryDisplay(cat, card);
+    });
+
+    function updateCategoryDisplay(cat, card) {
+      const activeBtn = card.querySelector(".date-btn.active");
+      const period = activeBtn ? activeBtn.dataset.period : "today";
+      const value = getCategorySales(cat, period);
+      const valueEl = card.querySelector(".stat-value");
+      if (valueEl) valueEl.textContent = money(value);
+    }
+
+    // Low stock list
     const low = products.filter(p=> !isRentProduct(p) && p.stock<=p.threshold);
-    $("#statLow").textContent = low.length;
 
     // category chart
     const byCat = {};
@@ -533,6 +612,7 @@
       tab.classList.add("active");
       payMethod = tab.dataset.pay;
       $("#tenderRow").style.display = payMethod==="cash" ? "block":"none";
+      $("#gcashRefRow").style.display = payMethod==="gcash" ? "block":"none";
       updateChange();
     });
   });
@@ -549,13 +629,16 @@
     updateChange();
   });
   $("#tenderInput").addEventListener("input", updateChange);
+  $("#gcashRefInput").addEventListener("input", updateChange);
 
   function updateChange(){
     const {total} = cartTotals();
     quickTenderButtons(total);
     if(payMethod!="cash"){
       $("#changeDue").textContent = money(0);
-      $("#checkoutBtn").disabled = cart.length===0;
+      const refInput = $("#gcashRefInput");
+      const hasValidRef = payMethod === "gcash" ? /\d{4}/.test(refInput.value || "") : true;
+      $("#checkoutBtn").disabled = cart.length===0 || !hasValidRef;
       return;
     }
     const tendered = parseFloat($("#tenderInput").value)||0;
@@ -591,6 +674,11 @@
 
   $("#checkoutBtn").addEventListener("click", async ()=>{
     const {subtotal, total} = cartTotals();
+    const gcashRef = $("#gcashRefInput").value.trim();
+    if (payMethod === "gcash" && !/^\d{4}$/.test(gcashRef)) {
+      toast("Please enter a 4-digit GCash reference code", false);
+      return;
+    }
     const tendered = payMethod==="cash" ? (parseFloat($("#tenderInput").value)||0) : total;
     const change = payMethod==="cash" ? tendered-total : 0;
 
@@ -611,11 +699,13 @@
       subtotal, tax: 0, total,
       payment: payMethod,
       tendered, change,
-      cashier: "Pickle Social"
+      cashier: "Pickle Social",
+      reference_code: payMethod === "gcash" ? gcashRef : null
     };
     sales.unshift(sale);
     cart = [];
     $("#tenderInput").value = "";
+    $("#gcashRefInput").value = "";
     renderCart();
     renderInventory();
     renderDashboard();
@@ -985,6 +1075,22 @@
       toggleBtn.textContent = productSalesDay === "today" ? "Yesterday" : "Today";
       renderDashboard();
     });
+    const lastRestockBtn = $("#lastRestockBtn");
+    if (lastRestockBtn) {
+      lastRestockBtn.addEventListener("click", () => {
+        const snacksRestocks = stockLogs.filter(log => {
+          const product = products.find(p => p.id === log.product_id);
+          return product && product.category === "Snacks";
+        });
+        if (snacksRestocks.length === 0) {
+          toast("No restock history for Snacks", false);
+          return;
+        }
+        const lastRestock = snacksRestocks[0];
+        const restockDate = new Date(lastRestock.created_at);
+        toast(`Last restock: ${restockDate.toLocaleDateString()} ${restockDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} - Added ${lastRestock.added_stock} units`, true);
+      });
+    }
     showView(initialView);
   })();
 })();
