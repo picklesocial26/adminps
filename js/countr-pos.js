@@ -406,10 +406,12 @@
       
       const calendarBtn = card.querySelector(".calendar-btn");
       const datePicker = card.querySelector(".card-date-picker");
+      const dateSelector = card.querySelector(".date-selector");
       const dateButtons = card.querySelectorAll(".date-btn");
       const selectedContainer = card.querySelector(".selected-date-container") || document.createElement("div");
       const selectedDatesWrap = selectedContainer.querySelector(".selected-date-list") || document.createElement("div");
       const selectedClearBtn = selectedContainer.querySelector(".selected-date-clear") || document.createElement("button");
+      const selectedDetailsBtn = selectedContainer.querySelector(".selected-date-details-toggle") || document.createElement("button");
       const selectedStatus = selectedContainer.querySelector(".selected-date-status") || document.createElement("div");
 
       if (!card.dataset.bound) {
@@ -462,17 +464,10 @@
         selectedDatesWrap.style.flexWrap = "wrap";
         selectedDatesWrap.style.gap = "6px";
 
-        selectedClearBtn.className = "selected-date-clear";
+        selectedClearBtn.className = "btn btn-danger btn-sm selected-date-clear";
         selectedClearBtn.type = "button";
         selectedClearBtn.textContent = "Clear all dates";
         selectedClearBtn.style.alignSelf = "flex-start";
-        selectedClearBtn.style.padding = "6px 10px";
-        selectedClearBtn.style.border = "1px solid var(--border)";
-        selectedClearBtn.style.borderRadius = "999px";
-        selectedClearBtn.style.background = "transparent";
-        selectedClearBtn.style.color = "var(--ink)";
-        selectedClearBtn.style.fontSize = "11px";
-        selectedClearBtn.style.fontWeight = "700";
         selectedClearBtn.style.cursor = "pointer";
         selectedClearBtn.style.display = "none";
 
@@ -480,6 +475,13 @@
         selectedStatus.style.fontSize = "12px";
         selectedStatus.style.color = "var(--ink-soft)";
         selectedStatus.style.lineHeight = "1.4";
+
+        selectedDetailsBtn.className = "btn btn-blue btn-sm selected-date-details-toggle";
+        selectedDetailsBtn.type = "button";
+        selectedDetailsBtn.textContent = "Show details";
+        selectedDetailsBtn.style.alignSelf = "flex-start";
+        selectedDetailsBtn.style.cursor = "pointer";
+        selectedDetailsBtn.style.display = "none";
 
         selectedDatesWrap.addEventListener("click", (e) => {
           const chip = e.target.closest(".selected-date-chip");
@@ -495,11 +497,22 @@
           updateCategoryDisplay(cat, card);
         });
 
+        selectedDetailsBtn.addEventListener("click", () => {
+          const selectedValues = getSelectedDatesForCategory(cat);
+          if (!selectedValues.length) return;
+          openSelectedDateDetailsModal(cat, selectedValues);
+        });
+
         if (!selectedContainer.querySelector(".selected-date-list")) {
           selectedContainer.appendChild(selectedDatesWrap);
           selectedContainer.appendChild(selectedClearBtn);
+          selectedContainer.appendChild(selectedDetailsBtn);
           selectedContainer.appendChild(selectedStatus);
-          datePicker.insertAdjacentElement("afterend", selectedContainer);
+          if (dateSelector) {
+            dateSelector.insertAdjacentElement("afterend", selectedContainer);
+          } else {
+            datePicker.insertAdjacentElement("afterend", selectedContainer);
+          }
         }
 
         card.dataset.bound = "true";
@@ -520,12 +533,15 @@
 
       const chipWrap = card.querySelector(".selected-date-list");
       const clearBtn = card.querySelector(".selected-date-clear");
+      const detailsBtn = card.querySelector(".selected-date-details-toggle");
       const statusEl = card.querySelector(".selected-date-status");
-      if (chipWrap && clearBtn && statusEl) {
+      if (chipWrap && clearBtn && detailsBtn && statusEl) {
         const selectedValues = getSelectedDatesForCategory(cat);
         if (!selectedValues.length) {
           chipWrap.innerHTML = '<span style="font-size:11px;color:var(--ink-soft);">No dates selected</span>';
           clearBtn.style.display = "none";
+          detailsBtn.style.display = "none";
+          detailsBtn.textContent = "Show details";
           statusEl.textContent = "Select one or more dates to total multiple sales periods.";
           return;
         }
@@ -539,6 +555,7 @@
         const descriptor = selectedValues.length === 1 ? "1 date selected" : `${selectedValues.length} dates selected`;
         statusEl.textContent = `${descriptor} • Click a date to remove it.`;
         clearBtn.style.display = "inline-flex";
+        detailsBtn.style.display = "inline-flex";
       }
     }
 
@@ -633,6 +650,143 @@
         ${productSalesHtml}
       `;
     }
+  }
+
+  function getSelectedDateDetailsTotals(category, selectedValues) {
+    return sales.reduce((totals, sale) => {
+      const saleTime = new Date(sale.time);
+      if (!isSaleInSelectedDates(saleTime, selectedValues)) return totals;
+      const saleTotal = sale.items.reduce((sum, item) => {
+        const product = products.find(pp => pp.id === item.productId);
+        if (!product || product.category !== category) return sum;
+        return sum + (item.price * item.qty);
+      }, 0);
+      if (saleTotal <= 0) return totals;
+      totals.all += saleTotal;
+      if (sale.payment === 'cash') totals.cash += saleTotal;
+      if (sale.payment === 'gcash') totals.gcash += saleTotal;
+      return totals;
+    }, { all: 0, cash: 0, gcash: 0 });
+  }
+
+  function getSelectedDateDetails(category, selectedValues, paymentFilter = 'all') {
+    const matchedSales = sales
+      .filter(sale => {
+        const saleTime = new Date(sale.time);
+        const matchesDate = isSaleInSelectedDates(saleTime, selectedValues);
+        const matchesPayment = paymentFilter === 'all' || sale.payment === paymentFilter;
+        const hasCategoryItem = sale.items.some(item => {
+          const product = products.find(pp => pp.id === item.productId);
+          return product && product.category === category;
+        });
+        return matchesDate && matchesPayment && hasCategoryItem;
+      })
+      .sort((a,b) => new Date(b.time) - new Date(a.time));
+
+    return matchedSales.map(sale => {
+      const saleItems = sale.items.filter(item => {
+        const product = products.find(pp => pp.id === item.productId);
+        return product && product.category === category;
+      });
+      const itemRows = saleItems.map(item => {
+        const product = products.find(pp => pp.id === item.productId);
+        return `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--border);font-size:12px;">
+          <div style="flex:1;min-width:120px;">${product?.name || item.name || 'Unknown product'}</div>
+          <div style="min-width:72px;text-align:right;color:var(--ink-soft);">${item.qty} × ${money(item.price)}</div>
+          <div style="min-width:80px;text-align:right;font-weight:700;">${money(item.price * item.qty)}</div>
+        </div>`;
+      }).join("");
+      const saleTotal = saleItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin-bottom:8px;">
+          <span>${new Date(sale.time).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' })}</span>
+          <span>${new Date(sale.time).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span>
+          <span style="text-transform:uppercase;font-weight:700;">${sale.payment}</span>
+        </div>
+        ${itemRows}
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;font-weight:700;padding-top:8px;">
+          <span>Total for this sale</span>
+          <span>${money(saleTotal)}</span>
+        </div>
+      </div>`;
+    });
+  }
+
+  function openSelectedDateDetailsModal(category, selectedValues) {
+    const modal = document.getElementById('selectedDateDetailsModal');
+    const title = document.getElementById('selectedDateDetailsTitle');
+    const body = document.getElementById('selectedDateDetailsBody');
+    const allBtn = document.getElementById('selectedDateDetailsFilterAll');
+    const cashBtn = document.getElementById('selectedDateDetailsFilterCash');
+    const gcashBtn = document.getElementById('selectedDateDetailsFilterGcash');
+    if (!modal || !title || !body || !allBtn || !cashBtn || !gcashBtn) return;
+
+    modal.dataset.category = category;
+    modal.dataset.values = JSON.stringify(selectedValues);
+    modal.dataset.filter = 'all';
+
+    title.textContent = `${category} sales details`;
+    allBtn.classList.add('active');
+    cashBtn.classList.remove('active');
+    gcashBtn.classList.remove('active');
+
+    const totals = getSelectedDateDetailsTotals(category, selectedValues);
+    const salesRows = getSelectedDateDetails(category, selectedValues, 'all');
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Today</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.all)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Cash</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.cash)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">GCash</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.gcash)}</div>
+        </div>
+      </div>
+      ${salesRows.length ? salesRows.join('') : '<div style="font-size:12px;color:var(--ink-soft);">No sales found for these dates.</div>'}
+    `;
+    modal.hidden = false;
+  }
+
+  function renderSelectedDateModalDetails(filter) {
+    const modal = document.getElementById('selectedDateDetailsModal');
+    const body = document.getElementById('selectedDateDetailsBody');
+    const allBtn = document.getElementById('selectedDateDetailsFilterAll');
+    const cashBtn = document.getElementById('selectedDateDetailsFilterCash');
+    const gcashBtn = document.getElementById('selectedDateDetailsFilterGcash');
+    if (!modal || !body || !allBtn || !cashBtn || !gcashBtn) return;
+
+    const category = modal.dataset.category;
+    const values = JSON.parse(modal.dataset.values || '[]');
+    const totals = getSelectedDateDetailsTotals(category, values);
+    const salesRows = getSelectedDateDetails(category, values, filter);
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Today</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.all)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Cash</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.cash)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">GCash</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.gcash)}</div>
+        </div>
+      </div>
+      ${salesRows.length ? salesRows.join('') : '<div style="font-size:12px;color:var(--ink-soft);">No sales found for these dates.</div>'}
+    `;
+
+    allBtn.classList.toggle('active', filter === 'all');
+    cashBtn.classList.toggle('active', filter === 'cash');
+    gcashBtn.classList.toggle('active', filter === 'gcash');
   }
 
   /* ---------------- POS ---------------- */
@@ -907,6 +1061,20 @@
   }
   $("#receiptClose").addEventListener("click", ()=> $("#receiptModal").hidden = true);
   $("#receiptModal").addEventListener("click", e=>{ if(e.target===$("#receiptModal")) $("#receiptModal").hidden=true; });
+
+  $("#selectedDateDetailsClose").addEventListener("click", ()=> $("#selectedDateDetailsModal").hidden = true);
+  $("#selectedDateDetailsCloseBtn").addEventListener("click", ()=> $("#selectedDateDetailsModal").hidden = true);
+  $("#selectedDateDetailsModal").addEventListener("click", e=>{ if(e.target===$("#selectedDateDetailsModal")) $("#selectedDateDetailsModal").hidden=true; });
+
+  [
+    { id: 'selectedDateDetailsFilterAll', filter: 'all' },
+    { id: 'selectedDateDetailsFilterCash', filter: 'cash' },
+    { id: 'selectedDateDetailsFilterGcash', filter: 'gcash' },
+  ].forEach(({ id, filter }) => {
+    const btn = $("#" + id);
+    if (!btn) return;
+    btn.addEventListener("click", () => renderSelectedDateModalDetails(filter));
+  });
 
   /* ---------------- Inventory ---------------- */
   function populateCatFilter(){
