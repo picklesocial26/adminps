@@ -315,6 +315,27 @@
   </div>
 </div>
 
+<!-- Selected date details modal -->
+<div class="modal-backdrop" id="selectedDateDetailsModal" hidden>
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-head">
+      <h3 id="selectedDateDetailsTitle">Sales details</h3>
+      <button class="modal-close" id="selectedDateDetailsClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="btn selected-date-filter active" id="selectedDateDetailsFilterAll">Today</button>
+        <button class="btn selected-date-filter" id="selectedDateDetailsFilterCash">Cash</button>
+        <button class="btn selected-date-filter" id="selectedDateDetailsFilterGcash">GCash</button>
+      </div>
+      <div id="selectedDateDetailsBody"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="selectedDateDetailsCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toastWrap"></div>
 
 
