@@ -20,13 +20,36 @@
   let productSalesDay = "today";
   let supabaseClient = null;
   let hasSupabaseData = false;
-  let selectedDates = {Beverages: null, Snacks: null, Rent: null};
+  let selectedDates = {Beverages: [], Snacks: [], Rent: []};
 
   /* ---------------- Helpers ---------------- */
   const $ = (sel, root=document) => root.querySelector(sel);
   const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
   const money = n => "₱" + n.toFixed(2);
   const initials = name => name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+
+  function getSelectedDatesForCategory(category){
+    const values = selectedDates[category];
+    if (!Array.isArray(values)) return [];
+    return values.filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  }
+
+  function formatSelectedDateLabel(dateValue){
+    if (!dateValue) return "";
+    const [year, month, day] = dateValue.split("-");
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  function isSaleInSelectedDates(saleTime, selectedDateValues){
+    if (!selectedDateValues.length) return true;
+    return selectedDateValues.some(dateValue => {
+      const [year, month, day] = dateValue.split("-");
+      const start = new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0);
+      const end = new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59, 999);
+      return saleTime >= start && saleTime <= end;
+    });
+  }
 
   function normalizeProduct(item){
     return {
@@ -302,41 +325,31 @@
 
   /* ---------------- Dashboard ---------------- */
   function renderDashboard(){
-    // Category sales by period and date
     function getCategorySales(category, period){
+      const selectedDateValues = getSelectedDatesForCategory(category);
       const today = new Date();
       const startOfDay = new Date(today);
       startOfDay.setHours(0,0,0,0);
       const endOfDay = new Date(today);
       endOfDay.setHours(23,59,59,999);
-      
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() - today.getDay());
       weekStart.setHours(0,0,0,0);
-      
-      // Check if a specific date is selected for this category
-      const selectedDate = selectedDates[category];
-      let refDate = new Date(today);
-      let refStartDay = startOfDay;
-      let refEndDay = endOfDay;
-      
-      if (selectedDate) {
-        refDate = new Date(selectedDate);
-        refStartDay = new Date(refDate);
-        refStartDay.setHours(0,0,0,0);
-        refEndDay = new Date(refDate);
-        refEndDay.setHours(23,59,59,999);
-      }
-      
-      let filteredSales = sales.filter(s => {
+
+      const filteredSales = sales.filter(s => {
         const saleTime = new Date(s.time);
-        if (period === "today") return saleTime >= refStartDay && saleTime <= refEndDay;
-        if (period === "weekly") return saleTime >= weekStart && saleTime <= endOfDay;
-        if (period === "cash") return s.payment === "cash" && saleTime >= refStartDay && saleTime <= refEndDay;
-        if (period === "gcash") return s.payment === "gcash" && saleTime >= refStartDay && saleTime <= refEndDay;
-        return false;
+        const matchesDateSelection = selectedDateValues.length
+          ? isSaleInSelectedDates(saleTime, selectedDateValues)
+          : (period === "weekly"
+              ? saleTime >= weekStart && saleTime <= endOfDay
+              : saleTime >= startOfDay && saleTime <= endOfDay);
+
+        if (!matchesDateSelection) return false;
+        if (period === "cash") return s.payment === "cash";
+        if (period === "gcash") return s.payment === "gcash";
+        return true;
       });
-      
+
       return filteredSales.reduce((sum, s) => {
         const catSalesAmount = s.items
           .filter(item => {
@@ -349,6 +362,7 @@
     }
 
     function getCategoryItemCount(category, period){
+      const selectedDateValues = getSelectedDatesForCategory(category);
       const today = new Date();
       const startOfDay = new Date(today);
       startOfDay.setHours(0,0,0,0);
@@ -358,25 +372,18 @@
       weekStart.setDate(today.getDate() - today.getDay());
       weekStart.setHours(0,0,0,0);
 
-      const selectedDate = selectedDates[category];
-      let refDate = new Date(today);
-      let refStartDay = startOfDay;
-      let refEndDay = endOfDay;
-      if (selectedDate) {
-        refDate = new Date(selectedDate);
-        refStartDay = new Date(refDate);
-        refStartDay.setHours(0,0,0,0);
-        refEndDay = new Date(refDate);
-        refEndDay.setHours(23,59,59,999);
-      }
-
-      let filteredSales = sales.filter(s => {
+      const filteredSales = sales.filter(s => {
         const saleTime = new Date(s.time);
-        if (period === "today") return saleTime >= refStartDay && saleTime <= refEndDay;
-        if (period === "weekly") return saleTime >= weekStart && saleTime <= endOfDay;
-        if (period === "cash") return s.payment === "cash" && saleTime >= refStartDay && saleTime <= refEndDay;
-        if (period === "gcash") return s.payment === "gcash" && saleTime >= refStartDay && saleTime <= refEndDay;
-        return false;
+        const matchesDateSelection = selectedDateValues.length
+          ? isSaleInSelectedDates(saleTime, selectedDateValues)
+          : (period === "weekly"
+              ? saleTime >= weekStart && saleTime <= endOfDay
+              : saleTime >= startOfDay && saleTime <= endOfDay);
+
+        if (!matchesDateSelection) return false;
+        if (period === "cash") return s.payment === "cash";
+        if (period === "gcash") return s.payment === "gcash";
+        return true;
       });
 
       return filteredSales.reduce((sum, s) => {
@@ -399,36 +406,105 @@
       
       const calendarBtn = card.querySelector(".calendar-btn");
       const datePicker = card.querySelector(".card-date-picker");
-      if (calendarBtn && datePicker) {
-        calendarBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (typeof datePicker.showPicker === "function") {
-            datePicker.showPicker();
-          } else {
-            datePicker.click();
-          }
-        };
-      }
-      
-      if (datePicker) {
-        datePicker.onchange = (e) => {
-          selectedDates[cat] = e.target.value || null;
-          updateCategoryDisplay(cat, card);
-        };
-      }
-      
       const dateButtons = card.querySelectorAll(".date-btn");
-      dateButtons.forEach(btn => {
-        btn.classList.remove("active");
-        btn.addEventListener("click", () => {
-          dateButtons.forEach(b => b.classList.remove("active"));
-          btn.classList.add("active");
+      const selectedContainer = card.querySelector(".selected-date-container") || document.createElement("div");
+      const selectedDatesWrap = selectedContainer.querySelector(".selected-date-list") || document.createElement("div");
+      const selectedClearBtn = selectedContainer.querySelector(".selected-date-clear") || document.createElement("button");
+      const selectedStatus = selectedContainer.querySelector(".selected-date-status") || document.createElement("div");
+
+      if (!card.dataset.bound) {
+        if (calendarBtn && datePicker) {
+          calendarBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof datePicker.showPicker === "function") {
+              datePicker.showPicker();
+            } else {
+              datePicker.click();
+            }
+          };
+        }
+
+        if (datePicker) {
+          datePicker.onchange = (e) => {
+            const dateValue = e.target.value;
+            if (!dateValue) return;
+            const currentValues = getSelectedDatesForCategory(cat);
+            if (!currentValues.includes(dateValue)) {
+              currentValues.push(dateValue);
+              selectedDates[cat] = currentValues.sort((a,b)=>a.localeCompare(b));
+            }
+            e.target.value = "";
+            updateCategoryDisplay(cat, card);
+          };
+        }
+
+        dateButtons.forEach(btn => {
+          btn.addEventListener("click", () => {
+            dateButtons.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            updateCategoryDisplay(cat, card);
+          });
+        });
+
+        if (!card.querySelector(".date-btn.active")) {
+          dateButtons[0]?.classList.add("active");
+        }
+
+        selectedContainer.className = "selected-date-container";
+        selectedContainer.style.marginTop = "10px";
+        selectedContainer.style.display = "flex";
+        selectedContainer.style.flexDirection = "column";
+        selectedContainer.style.gap = "8px";
+
+        selectedDatesWrap.className = "selected-date-list";
+        selectedDatesWrap.style.display = "flex";
+        selectedDatesWrap.style.flexWrap = "wrap";
+        selectedDatesWrap.style.gap = "6px";
+
+        selectedClearBtn.className = "selected-date-clear";
+        selectedClearBtn.type = "button";
+        selectedClearBtn.textContent = "Clear all dates";
+        selectedClearBtn.style.alignSelf = "flex-start";
+        selectedClearBtn.style.padding = "6px 10px";
+        selectedClearBtn.style.border = "1px solid var(--border)";
+        selectedClearBtn.style.borderRadius = "999px";
+        selectedClearBtn.style.background = "transparent";
+        selectedClearBtn.style.color = "var(--ink)";
+        selectedClearBtn.style.fontSize = "11px";
+        selectedClearBtn.style.fontWeight = "700";
+        selectedClearBtn.style.cursor = "pointer";
+        selectedClearBtn.style.display = "none";
+
+        selectedStatus.className = "selected-date-status";
+        selectedStatus.style.fontSize = "12px";
+        selectedStatus.style.color = "var(--ink-soft)";
+        selectedStatus.style.lineHeight = "1.4";
+
+        selectedDatesWrap.addEventListener("click", (e) => {
+          const chip = e.target.closest(".selected-date-chip");
+          if (!chip) return;
+          const selectedValue = chip.dataset.date;
+          if (!selectedValue) return;
+          selectedDates[cat] = getSelectedDatesForCategory(cat).filter(value => value !== selectedValue);
           updateCategoryDisplay(cat, card);
         });
-      });
-      
-      // Set initial value
+
+        selectedClearBtn.addEventListener("click", () => {
+          selectedDates[cat] = [];
+          updateCategoryDisplay(cat, card);
+        });
+
+        if (!selectedContainer.querySelector(".selected-date-list")) {
+          selectedContainer.appendChild(selectedDatesWrap);
+          selectedContainer.appendChild(selectedClearBtn);
+          selectedContainer.appendChild(selectedStatus);
+          datePicker.insertAdjacentElement("afterend", selectedContainer);
+        }
+
+        card.dataset.bound = "true";
+      }
+
       updateCategoryDisplay(cat, card);
     });
 
@@ -441,6 +517,29 @@
       const count = getCategoryItemCount(cat, period);
       const countEl = card.querySelector(".stat-count");
       if (countEl) countEl.textContent = `${count} sold`;
+
+      const chipWrap = card.querySelector(".selected-date-list");
+      const clearBtn = card.querySelector(".selected-date-clear");
+      const statusEl = card.querySelector(".selected-date-status");
+      if (chipWrap && clearBtn && statusEl) {
+        const selectedValues = getSelectedDatesForCategory(cat);
+        if (!selectedValues.length) {
+          chipWrap.innerHTML = '<span style="font-size:11px;color:var(--ink-soft);">No dates selected</span>';
+          clearBtn.style.display = "none";
+          statusEl.textContent = "Select one or more dates to total multiple sales periods.";
+          return;
+        }
+
+        chipWrap.innerHTML = selectedValues.map(dateValue => `
+          <button type="button" class="selected-date-chip" data-date="${dateValue}" style="border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 10px;font-size:11px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06);">
+            ${formatSelectedDateLabel(dateValue)}
+          </button>
+        `).join("");
+
+        const descriptor = selectedValues.length === 1 ? "1 date selected" : `${selectedValues.length} dates selected`;
+        statusEl.textContent = `${descriptor} • Click a date to remove it.`;
+        clearBtn.style.display = "inline-flex";
+      }
     }
 
     // Low stock list
