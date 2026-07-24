@@ -125,8 +125,8 @@ nav.primary{display:flex;flex-direction:column;gap:2px;margin-top:6px;}
   flex:1;min-width:120px;
 }
 .card-date-picker{
-  position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;
-  padding:0;border:0;margin:0;
+  position:absolute;opacity:0;width:1px;height:1px;
+  padding:0;border:0;margin:0;cursor:pointer;
 }
 .card-date-picker:focus{outline:none;}
 .calendar-btn{
