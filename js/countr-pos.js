@@ -878,16 +878,16 @@
           <div style="font-size:18px;font-weight:800;">${money(totals.cash)}</div>
         </div>
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">GCash</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.gcash)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
           <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Qty Sold</div>
           <div style="font-size:18px;font-weight:800;">${productsSummary.reduce((sum, p) => sum + p.qty, 0)}</div>
         </div>
-        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
-          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Products</div>
-          <div style="font-size:18px;font-weight:800;">${productsSummary.length}</div>
-        </div>
       </div>
       <div style="margin-bottom:16px;">
-        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Product Summary</div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Product Summary = ${productsSummary.length}</div>
         <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
           ${productsSummaryHtml}
         </div>
@@ -935,16 +935,16 @@
           <div style="font-size:18px;font-weight:800;">${money(totals.cash)}</div>
         </div>
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">GCash</div>
+          <div style="font-size:18px;font-weight:800;">${money(totals.gcash)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
           <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Qty Sold</div>
           <div style="font-size:18px;font-weight:800;">${productsSummary.reduce((sum, p) => sum + p.qty, 0)}</div>
         </div>
-        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
-          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Products</div>
-          <div style="font-size:18px;font-weight:800;">${productsSummary.length}</div>
-        </div>
       </div>
       <div style="margin-bottom:16px;">
-        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Product Summary</div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Product Summary = ${productsSummary.length}</div>
         <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
           ${productsSummaryHtml}
         </div>
