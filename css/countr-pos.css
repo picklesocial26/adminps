@@ -112,14 +112,19 @@ nav.primary{display:flex;flex-direction:column;gap:2px;margin-top:6px;}
 }
 .category-card:hover{border-color:var(--accent);box-shadow:0 4px 16px rgba(214,51,108,.12);}
 .card-header{
-  display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+  display:flex;align-items:center;justify-content:flex-start;padding:18px 16px 14px;
   border-bottom:1px solid var(--border);background:linear-gradient(135deg, var(--paper) 0%, var(--surface) 100%);
+  gap:10px;
+  position:relative;
 }
-.card-header h3{margin:0;font-size:14px;font-weight:600;color:var(--ink);}
-.card-swatch{width:28px;height:28px;border-radius:8px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.1);}
+.card-header h3{margin:0;font-size:14px;font-weight:600;color:var(--ink);flex:1;min-width:0;padding-right:100px;}
+.card-header-actions{display:flex;align-items:center;gap:10px;position:absolute;top:50%;right:16px;transform:translateY(-50%);}
+.card-swatch{width:36px;height:36px;border-radius:10px;flex-shrink:0;border:1px solid var(--border);background:var(--surface);box-shadow:0 2px 8px rgba(0,0,0,.08);transition:all 0.12s ease;}
+.calendar-btn{position:relative;width:36px;height:36px;padding:0;border-radius:10px;border:1px solid var(--border);background:var(--surface);box-shadow:0 2px 8px rgba(0,0,0,.08);color:var(--ink);cursor:pointer;transition:all 0.12s ease;display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0;}
 .card-content{padding:16px;}
 .card-content{
   display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;
+  position:relative;
 }
 .card-stats{
   flex:1;min-width:120px;
@@ -129,13 +134,10 @@ nav.primary{display:flex;flex-direction:column;gap:2px;margin-top:6px;}
   padding:0;border:0;margin:0;cursor:pointer;
 }
 .card-date-picker:focus{outline:none;}
-.calendar-btn{
-  width:36px;height:36px;padding:0;border-radius:8px;border:1px solid var(--border);
-  background:var(--paper);color:var(--ink);cursor:pointer;transition:all 0.12s ease;
-  display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0;
-}
 .calendar-btn svg{width:18px;height:18px;pointer-events:none;}
 .calendar-btn:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-dark);}
+.card-swatch:hover,
+.calendar-btn:hover{box-shadow:0 2px 12px rgba(0,0,0,.12);}
 .calendar-btn:active{transform:scale(0.95);}
 .stat-value{font-size:28px;font-weight:700;margin-bottom:4px;background:linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .stat-label{font-size:12px;color:var(--ink-soft);margin-bottom:14px;text-transform:uppercase;letter-spacing:.03em;font-weight:600;}
@@ -149,6 +151,28 @@ nav.primary{display:flex;flex-direction:column;gap:2px;margin-top:6px;}
 }
 .date-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
 .date-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(214,51,108,.25);}
+.selected-date-container{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+}
+.selected-date-clear,
+.selected-date-details-toggle{
+  flex:1 1 calc(50% - 6px);min-width:140px;border-radius:12px;padding:11px 14px;
+  font-size:13px;font-weight:700;min-height:44px;
+  box-shadow:0 4px 18px rgba(0,0,0,.12);transition:all 0.12s ease;display:inline-flex;align-items:center;justify-content:center;
+  width:auto !important;
+}
+.selected-date-status{flex:1 1 100%;font-size:12px;color:var(--ink-soft);}
+
+@media (max-width:820px){
+  .selected-date-container{flex-direction:row !important;justify-content:space-between !important;}
+  .selected-date-clear,
+  .selected-date-details-toggle{flex:1 1 48% !important;width:auto !important;}
+  .selected-date-status{width:100%;margin-top:6px;}
+}
+@media (max-width:600px){
+  .selected-date-clear,
+  .selected-date-details-toggle{min-width:120px;padding:10px 12px;}
+}
 
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);transition:all 0.2s ease;} 
 .panel:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);}
@@ -333,7 +357,9 @@ tbody tr.drag-over{outline:2px dashed var(--accent);}
   .sidebar.open{left:0;box-shadow:20px 0 60px rgba(0,0,0,.25);} 
   .menu-btn{display:inline-flex;} 
   .sidebar-close{display:inline-flex;} 
-  .grid-cards{grid-template-columns:1fr 1fr;} 
+  .grid-cards{grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;} 
+  .stat-card{padding:14px 14px;} 
+  .stat-card .v{font-size:20px;} 
   .view{padding:14px;} 
   .topbar{padding:12px 14px;flex-wrap:wrap;align-items:center;gap:10px;}
   .topbar-right{width:100%;justify-content:space-between;}
@@ -342,6 +368,21 @@ tbody tr.drag-over{outline:2px dashed var(--accent);}
   .panel-head{flex-wrap:wrap;gap:10px;} 
   .panel-head .btn{width:auto;min-width:110px;} 
   .btn-sm{width:auto;}
+  .category-card{border-radius:12px;}
+  .card-header{padding:12px 14px;}
+  .card-content{padding:12px 14px;gap:10px;flex-direction:column;align-items:stretch;}
+  .card-stats{min-width:0;}
+  .card-stats .stat-value{font-size:24px;}
+  .date-selector{gap:6px;}
+  .date-btn{flex:1 1 calc(50% - 6px);min-width:0;}
+  .panel{overflow-x:auto;}
+  .panel table{min-width:700px;}
+  table th, table td{padding:10px 12px;}
+  .panel-head h3{font-size:14px;}
+  .topbar h1{font-size:16px;}
+  .topbar .sub{font-size:11px;}
+  .sales-history .panel-head{padding:12px 14px;}
+  .panel-head .sub{font-size:12px;}
   .pos-layout{grid-template-columns:1fr;gap:14px;height:auto;}
   .receipt-panel{height:auto;}
   .pos-search{margin-bottom:12px;}
@@ -355,19 +396,29 @@ tbody tr.drag-over{outline:2px dashed var(--accent);}
   .tender-quick{flex-wrap:wrap;}
   .tender-quick button{flex:1 1 48%;}
   .modal{max-width:calc(100% - 24px);margin:0 12px;}
-  .panel{overflow-x:auto;}
-  .panel table{min-width:700px;}
-  table th, table td{padding:10px 12px;}
-  .panel-head h3{font-size:14px;}
-  .topbar h1{font-size:16px;}
-  .topbar .sub{font-size:11px;}
-  .sales-history .panel-head{padding:12px 14px;}
-  .panel-head .sub{font-size:12px;}
 }
 @media (min-width:821px){
   .sidebar-close{display:none !important;}
 }
 @media (max-width:600px){
+  .view{padding:12px;}
+  .grid-cards{grid-template-columns:1fr;gap:10px;margin-bottom:14px;}
+  .stat-card{padding:12px 13px;}
+  .stat-card .k{font-size:10.5px;}
+  .stat-card .v{font-size:18px;}
+  .stat-card .d{font-size:11px;}
+  .category-card{border-radius:10px;}
+  .card-header{padding:10px 12px;}
+  .card-header h3{font-size:13px;}
+  .card-content{padding:10px 12px;gap:8px;}
+  .card-stats .stat-value{font-size:20px;}
+  .card-stats .stat-label{font-size:11px;margin-bottom:8px;}
+  .date-selector{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .date-btn{padding:8px 10px;font-size:10.5px;min-height:34px;}
+  .panel{border-radius:10px;}
+  .panel-head{padding:12px;}
+  .panel-head h3{font-size:13px;}
+  .panel-head .btn{width:100%;justify-content:center;}
   #selectedDateDetailsModal .modal{
     max-width:calc(100% - 16px);
     margin:0 8px;
