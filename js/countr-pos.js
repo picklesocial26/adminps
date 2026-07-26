@@ -742,6 +742,39 @@
     }
   }
 
+  function getProductsSummaryForDateDetails(category, selectedValues, paymentFilter = 'all') {
+    const matchedSales = sales
+      .filter(sale => {
+        const saleTime = new Date(sale.time);
+        const matchesDate = isSaleInSelectedDates(saleTime, selectedValues);
+        const matchesPayment = paymentFilter === 'all' || sale.payment === paymentFilter;
+        const hasCategoryItem = sale.items.some(item => {
+          const product = products.find(pp => pp.id === item.productId);
+          return product && product.category === category;
+        });
+        return matchesDate && matchesPayment && hasCategoryItem;
+      });
+
+    const productSummary = {};
+    matchedSales.forEach(sale => {
+      sale.items.forEach(item => {
+        const product = products.find(pp => pp.id === item.productId);
+        if (!product || product.category !== category) return;
+        if (!productSummary[product.id]) {
+          productSummary[product.id] = {
+            name: product.name,
+            qty: 0,
+            revenue: 0,
+          };
+        }
+        productSummary[product.id].qty += Number(item.qty || 0);
+        productSummary[product.id].revenue += Number(item.price || 0) * Number(item.qty || 0);
+      });
+    });
+
+    return Object.values(productSummary).sort((a, b) => b.revenue - a.revenue);
+  }
+
   function getSelectedDateDetailsTotals(category, selectedValues) {
     return sales.reduce((totals, sale) => {
       const saleTime = new Date(sale.time);
@@ -821,12 +854,23 @@
     gcashBtn.classList.remove('active');
 
     const totals = getSelectedDateDetailsTotals(category, selectedValues);
+    const productsSummary = getProductsSummaryForDateDetails(category, selectedValues, 'all');
     const salesRows = getSelectedDateDetails(category, selectedValues, 'all');
 
+    const productsSummaryHtml = productsSummary.length
+      ? productsSummary.map(p => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;">
+            <div style="flex:1;"><strong>${p.name}</strong></div>
+            <div style="text-align:right;color:var(--ink-soft);min-width:60px;">${p.qty} qty</div>
+            <div class="mono" style="text-align:right;min-width:80px;font-weight:700;">${money(p.revenue)}</div>
+          </div>
+        `).join('')
+      : '<div style="font-size:12px;color:var(--ink-soft);">No products sold.</div>';
+
     body.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
-          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Today</div>
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Total</div>
           <div style="font-size:18px;font-weight:800;">${money(totals.all)}</div>
         </div>
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
@@ -834,11 +878,24 @@
           <div style="font-size:18px;font-weight:800;">${money(totals.cash)}</div>
         </div>
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
-          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">GCash</div>
-          <div style="font-size:18px;font-weight:800;">${money(totals.gcash)}</div>
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Qty Sold</div>
+          <div style="font-size:18px;font-weight:800;">${productsSummary.reduce((sum, p) => sum + p.qty, 0)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Products</div>
+          <div style="font-size:18px;font-weight:800;">${productsSummary.length}</div>
         </div>
       </div>
-      ${salesRows.length ? salesRows.join('') : '<div style="font-size:12px;color:var(--ink-soft);">No sales found for these dates.</div>'}
+      <div style="margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Product Summary</div>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
+          ${productsSummaryHtml}
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Sales Detail</div>
+        ${salesRows.length ? salesRows.join('') : '<div style="font-size:12px;color:var(--ink-soft);">No sales found for these dates.</div>'}
+      </div>
     `;
     modal.hidden = false;
   }
@@ -854,12 +911,23 @@
     const category = modal.dataset.category;
     const values = JSON.parse(modal.dataset.values || '[]');
     const totals = getSelectedDateDetailsTotals(category, values);
+    const productsSummary = getProductsSummaryForDateDetails(category, values, filter);
     const salesRows = getSelectedDateDetails(category, values, filter);
 
+    const productsSummaryHtml = productsSummary.length
+      ? productsSummary.map(p => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;">
+            <div style="flex:1;"><strong>${p.name}</strong></div>
+            <div style="text-align:right;color:var(--ink-soft);min-width:60px;">${p.qty} qty</div>
+            <div class="mono" style="text-align:right;min-width:80px;font-weight:700;">${money(p.revenue)}</div>
+          </div>
+        `).join('')
+      : '<div style="font-size:12px;color:var(--ink-soft);">No products sold.</div>';
+
     body.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
-          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Today</div>
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Total</div>
           <div style="font-size:18px;font-weight:800;">${money(totals.all)}</div>
         </div>
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
@@ -867,11 +935,24 @@
           <div style="font-size:18px;font-weight:800;">${money(totals.cash)}</div>
         </div>
         <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
-          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">GCash</div>
-          <div style="font-size:18px;font-weight:800;">${money(totals.gcash)}</div>
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Qty Sold</div>
+          <div style="font-size:18px;font-weight:800;">${productsSummary.reduce((sum, p) => sum + p.qty, 0)}</div>
+        </div>
+        <div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--paper);">
+          <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Products</div>
+          <div style="font-size:18px;font-weight:800;">${productsSummary.length}</div>
         </div>
       </div>
-      ${salesRows.length ? salesRows.join('') : '<div style="font-size:12px;color:var(--ink-soft);">No sales found for these dates.</div>'}
+      <div style="margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Product Summary</div>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
+          ${productsSummaryHtml}
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Sales Detail</div>
+        ${salesRows.length ? salesRows.join('') : '<div style="font-size:12px;color:var(--ink-soft);">No sales found for these dates.</div>'}
+      </div>
     `;
 
     allBtn.classList.toggle('active', filter === 'all');
