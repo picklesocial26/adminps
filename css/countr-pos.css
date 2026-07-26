@@ -367,3 +367,36 @@ tbody tr.drag-over{outline:2px dashed var(--accent);}
 @media (min-width:821px){
   .sidebar-close{display:none !important;}
 }
+@media (max-width:600px){
+  #selectedDateDetailsModal .modal{
+    max-width:calc(100% - 16px);
+    margin:0 8px;
+  }
+  #selectedDateDetailsModal [style*="grid-template-columns:repeat(4"]{ 
+    grid-template-columns:repeat(2,1fr) !important;
+  }
+  #selectedDateDetailsModal [style*="display:flex"][style*="gap:8px"]{
+    flex-direction:column;
+    gap:6px !important;
+  }
+  #selectedDateDetailsModal .btn.selected-date-filter{
+    width:100%;
+    font-size:14px;
+    padding:10px 12px;
+  }
+  #selectedDateDetailsBody{
+    font-size:13px;
+  }
+  #selectedDateDetailsBody h3{
+    font-size:14px;
+  }
+  #selectedDateDetailsBody [style*="font-size:18px"]{
+    font-size:16px !important;
+  }
+  #selectedDateDetailsBody [style*="font-size:12px"]{
+    font-size:11px !important;
+  }
+  #selectedDateDetailsBody [style*="font-size:11px"]{
+    font-size:10px !important;
+  }
+}
