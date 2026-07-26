@@ -470,6 +470,7 @@
       const dateButtons = card.querySelectorAll(".date-btn");
       const selectedContainer = card.querySelector(".selected-date-container") || document.createElement("div");
       const selectedDatesWrap = selectedContainer.querySelector(".selected-date-list") || document.createElement("div");
+      const selectedActionsWrap = selectedContainer.querySelector(".selected-date-actions") || document.createElement("div");
       const selectedClearBtn = selectedContainer.querySelector(".selected-date-clear") || document.createElement("button");
       const selectedDetailsBtn = selectedContainer.querySelector(".selected-date-details-toggle") || document.createElement("button");
       const selectedStatus = selectedContainer.querySelector(".selected-date-status") || document.createElement("div");
@@ -516,18 +517,26 @@
         selectedContainer.className = "selected-date-container";
         selectedContainer.style.marginTop = "10px";
         selectedContainer.style.display = "flex";
-        selectedContainer.style.flexDirection = "column";
-        selectedContainer.style.gap = "8px";
+        selectedContainer.style.flexDirection = "row";
+        selectedContainer.style.flexWrap = "wrap";
+        selectedContainer.style.gap = "10px";
+        selectedContainer.style.alignItems = "center";
+        selectedContainer.style.justifyContent = "space-between";
 
         selectedDatesWrap.className = "selected-date-list";
         selectedDatesWrap.style.display = "flex";
         selectedDatesWrap.style.flexWrap = "wrap";
         selectedDatesWrap.style.gap = "6px";
 
+        selectedActionsWrap.className = "selected-date-actions";
+        selectedActionsWrap.style.display = "flex";
+        selectedActionsWrap.style.flexWrap = "wrap";
+        selectedActionsWrap.style.gap = "10px";
+        selectedActionsWrap.style.width = "100%";
+
         selectedClearBtn.className = "btn btn-danger btn-sm selected-date-clear";
         selectedClearBtn.type = "button";
         selectedClearBtn.textContent = "Clear all dates";
-        selectedClearBtn.style.alignSelf = "flex-start";
         selectedClearBtn.style.cursor = "pointer";
         selectedClearBtn.style.display = "none";
 
@@ -565,8 +574,9 @@
 
         if (!selectedContainer.querySelector(".selected-date-list")) {
           selectedContainer.appendChild(selectedDatesWrap);
-          selectedContainer.appendChild(selectedClearBtn);
-          selectedContainer.appendChild(selectedDetailsBtn);
+          selectedActionsWrap.appendChild(selectedClearBtn);
+          selectedActionsWrap.appendChild(selectedDetailsBtn);
+          selectedContainer.appendChild(selectedActionsWrap);
           selectedContainer.appendChild(selectedStatus);
           if (dateSelector) {
             dateSelector.insertAdjacentElement("afterend", selectedContainer);
