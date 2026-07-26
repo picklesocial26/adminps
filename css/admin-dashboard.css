@@ -223,18 +223,16 @@ main {
   min-width: 140px;
 }
 
-.dashboard-title p {
-  margin-top: 8px;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
+@media (max-width: 1280px) {
+  .dashboard-actions {
+    justify-content: flex-start;
+    gap: 8px;
+  }
 
-.bookings-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  .dashboard-actions a,
+  .dashboard-actions button {
+    min-width: 120px;
+  }
 }
 
 .toolbar-copy {

@@ -12,6 +12,7 @@
 
   let cart = [];          // {productId, qty}
   let sales = [];         // completed transactions
+  let voidedSales = [];   // voided transactions
   let products = [];
   let stockLogs = [];
   let saleCounter = 1024;
@@ -65,6 +66,7 @@
   }
 
   function normalizeSale(item){
+    const isVoided = Boolean(item?.voided || item?.status === "voided");
     return {
       id: Number(item.id || 0),
       time: item.time ? (typeof item.time === "string" ? new Date(item.time) : item.time instanceof Date ? item.time : new Date(item.time)) : new Date(item.created_at || new Date().toISOString()),
@@ -77,6 +79,8 @@
       change: Number(item.change || 0),
       cashier: item.cashier || "Pickle Social",
       reference_code: item.reference_code || null,
+      voided: isVoided,
+      status: item.status || (isVoided ? "voided" : "completed"),
     };
   }
 
@@ -101,6 +105,10 @@
         time: s.time instanceof Date ? s.time.toISOString() : s.time,
       }))));
       localStorage.setItem("countr-pos-stock-logs", JSON.stringify(stockLogs));
+      localStorage.setItem("countr-pos-voided-sales", JSON.stringify(voidedSales.map(s=>({
+        ...s,
+        time: s.time instanceof Date ? s.time.toISOString() : s.time,
+      }))));
     } catch (err) {
       console.warn("Unable to save POS data locally", err);
     }
@@ -120,12 +128,16 @@
     try {
       const storedProducts = localStorage.getItem("countr-pos-products");
       const storedSales = localStorage.getItem("countr-pos-sales");
+      const storedVoidSales = localStorage.getItem("countr-pos-voided-sales");
       const storedLogs = localStorage.getItem("countr-pos-stock-logs");
       if (storedProducts) {
         try { products = JSON.parse(storedProducts).map(normalizeProduct); } catch (err) { console.warn("Failed to parse saved products", err); }
       }
       if (storedSales) {
         try { sales = JSON.parse(storedSales).map(normalizeSale); } catch (err) { console.warn("Failed to parse saved sales", err); }
+      }
+      if (storedVoidSales) {
+        try { voidedSales = JSON.parse(storedVoidSales).map(normalizeSale); } catch (err) { console.warn("Failed to parse saved voided sales", err); }
       }
       if (storedLogs) {
         try { stockLogs = JSON.parse(storedLogs).map(normalizeStockLog); } catch (err) { console.warn("Failed to parse saved stock logs", err); }
@@ -165,6 +177,16 @@
         hasSupabaseData = true;
       }
 
+      const { data: remoteVoidSales, error: voidSalesError } = await client.from("pos_void_sales").select("*").order("created_at", { ascending: false });
+      if (!voidSalesError && Array.isArray(remoteVoidSales)) {
+        voidedSales = remoteVoidSales.map(item => {
+          const normalized = normalizeSale(item);
+          normalized.voided = true;
+          normalized.status = "voided";
+          return normalized;
+        });
+      }
+
       const { data: remoteLogs, error: logError } = await client.from("pos_stock_logs").select("*").order("created_at", { ascending: false });
       if (!logError && Array.isArray(remoteLogs)) {
         stockLogs = remoteLogs.map(normalizeStockLog);
@@ -199,6 +221,22 @@
           change: sale.change,
           cashier: sale.cashier,
           reference_code: sale.reference_code || null,
+        }], { onConflict: "id" });
+      }
+      for (const sale of voidedSales) {
+        await client.from("pos_void_sales").upsert([{
+          id: sale.id,
+          created_at: sale.time instanceof Date ? sale.time.toISOString() : sale.time,
+          items: sale.items,
+          subtotal: sale.subtotal,
+          tax: sale.tax,
+          total: sale.total,
+          payment: sale.payment,
+          tendered: sale.tendered,
+          change: sale.change,
+          cashier: sale.cashier,
+          reference_code: sale.reference_code || null,
+          voided_at: new Date().toISOString(),
         }], { onConflict: "id" });
       }
     } catch (err) {
@@ -251,6 +289,9 @@
     if (!confirm(`Void sale #${sale.id}? This will return items to stock.`)) return;
 
     sales.splice(saleIndex, 1);
+    sale.voided = true;
+    sale.status = "voided";
+    voidedSales.unshift(sale);
     sale.items.forEach(item => {
       const product = products.find(p => p.id === item.productId);
       if (!product) return;
@@ -263,6 +304,10 @@
     renderDashboard();
     renderProducts();
     renderSales();
+    renderVoidSales();
+    if (document.getElementById("view-void-sales") && !document.getElementById("view-void-sales").hidden) {
+      showView("void-sales");
+    }
     toast(`Sale #${sale.id} voided`, false);
     saveLocalData();
     await deleteSaleRemote(sale.id);
@@ -288,10 +333,19 @@
     pos:{title:"Point of Sale", sub:"Build the order, then take payment"},
     inventory:{title:"Inventory", sub:"Manage stock, pricing and product details"},
     sales:{title:"Sales History", sub:"Every completed transaction"},
+    'void-sales':{title:"Void Sales Logs", sub:"Voided transactions and their details"},
   };
 
-  const requestedView = (new URLSearchParams(window.location.search).get("view") || "pos").toLowerCase();
-  const initialView = Object.prototype.hasOwnProperty.call(viewMeta, requestedView) ? requestedView : "pos";
+  const VIEW_STORAGE_KEY = "countr-pos-last-view";
+
+  function getInitialView(){
+    const fromUrl = new URLSearchParams(window.location.search).get("view");
+    const fromStorage = window.localStorage ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
+    const requestedView = (fromUrl || fromStorage || "pos").toLowerCase();
+    return Object.prototype.hasOwnProperty.call(viewMeta, requestedView) ? requestedView : "pos";
+  }
+
+  const initialView = getInitialView();
 
   function showView(name){
     Object.keys(viewMeta).forEach(v=>{
@@ -301,9 +355,13 @@
     $("#viewTitle").textContent = viewMeta[name].title;
     $("#viewSub").textContent = viewMeta[name].sub;
     $("#sidebar").classList.remove("open");
+    if (window.localStorage) {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, name);
+    }
     if(name==="dashboard") renderDashboard();
     if(name==="inventory") renderInventory();
     if(name==="sales") renderSales();
+    if(name==="void-sales") renderVoidSales();
     if(name==="pos") renderProducts();
   }
   $("#nav").addEventListener("click", e=>{
@@ -324,6 +382,8 @@
   tickClock();
 
   /* ---------------- Dashboard ---------------- */
+  let categoryBreakdownVisible = false;
+
   function renderDashboard(){
     function getCategorySales(category, period){
       const selectedDateValues = getSelectedDatesForCategory(category);
@@ -563,12 +623,13 @@
     const low = products.filter(p=> !isRentProduct(p) && p.stock<=p.threshold);
 
     // category chart
-    const byCat = {};
-    sales.forEach(t=> t.items.forEach(i=>{
-      const p = products.find(pp=>pp.id===i.productId);
-      if(!p) return;
-      byCat[p.category] = (byCat[p.category]||0) + i.qty*i.price;
-    }));
+    const categoryBreakdown = window.buildCategorySalesBreakdown
+      ? window.buildCategorySalesBreakdown(sales, products, Object.keys(CATS))
+      : {};
+    const byCat = Object.keys(CATS).reduce((acc, category) => {
+      acc[category] = categoryBreakdown[category]?.totalRevenue || 0;
+      return acc;
+    }, {});
     const max = Math.max(1, ...Object.values(byCat));
     const catHtml = Object.keys(CATS).map(c=>{
       const val = byCat[c]||0;
@@ -582,6 +643,35 @@
       </div>`;
     }).join("");
     $("#catChart").innerHTML = sales.length ? catHtml : `<div class="empty" style="padding:20px 0;"><p>No sales recorded today yet — head to Point of Sale to ring up an order.</p></div>`;
+
+    const breakdownHtml = Object.keys(CATS).map(category => {
+      const breakdown = categoryBreakdown[category];
+      const itemsHtml = breakdown?.items?.length
+        ? breakdown.items.map(item => `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--border);font-size:12px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;">${item.name}</div>
+                <div style="color:var(--ink-soft);">${item.qty} sold</div>
+              </div>
+              <div class="mono" style="text-align:right;white-space:nowrap;">${money(item.revenue)}</div>
+            </div>`).join("")
+        : '<div style="padding:6px 0;color:var(--ink-soft);font-size:12px;">No product sales yet.</div>';
+      return `
+        <div style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--paper);">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+            <div style="font-size:13px;font-weight:700;">${category}</div>
+            <div class="mono" style="font-size:12px;">${breakdown?.totalQty || 0} sold • ${money(breakdown?.totalRevenue || 0)}</div>
+          </div>
+          ${itemsHtml}
+        </div>`;
+    }).join("");
+    $("#categoryBreakdown").innerHTML = breakdownHtml;
+    const breakdownContainer = document.getElementById("categoryBreakdown");
+    const toggleBtn = document.getElementById("toggleCategoryBreakdownBtn");
+    if (breakdownContainer && toggleBtn) {
+      breakdownContainer.style.display = categoryBreakdownVisible ? "block" : "none";
+      toggleBtn.textContent = categoryBreakdownVisible ? "Hide details" : "Show details";
+    }
 
     // low stock list
     if(low.length===0){
@@ -1021,6 +1111,57 @@
     }
   });
 
+  /* ---------------- Toggle breakdown ---------------- */
+  document.addEventListener("DOMContentLoaded", () => {
+    const toggleBtn = document.getElementById("toggleCategoryBreakdownBtn");
+    if (!toggleBtn) return;
+
+    toggleBtn.addEventListener("click", () => {
+      categoryBreakdownVisible = !categoryBreakdownVisible;
+      const breakdownContainer = document.getElementById("categoryBreakdown");
+      if (breakdownContainer) {
+        breakdownContainer.style.display = categoryBreakdownVisible ? "block" : "none";
+      }
+      toggleBtn.textContent = categoryBreakdownVisible ? "Hide details" : "Show details";
+    });
+  });
+
+  function renderVoidSales(){
+    const listEl = document.getElementById("voidSalesList");
+    if (!listEl) return;
+
+    const visibleVoidedSales = voidedSales.filter(sale => sale && (sale.voided || sale.status === "voided"));
+    if (!visibleVoidedSales.length) {
+      listEl.innerHTML = `<div class="empty" style="padding:24px 20px;"><p>No voided sales yet.</p></div>`;
+      return;
+    }
+
+    listEl.innerHTML = `
+      <div style="display:grid;gap:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(135deg, var(--paper) 0%, var(--surface) 100%);">
+          <div>
+            <div style="font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;font-weight:700;">Audit trail</div>
+            <div style="font-size:15px;font-weight:700;">${visibleVoidedSales.length} voided transaction${visibleVoidedSales.length === 1 ? "" : "s"}</div>
+          </div>
+          <span class="badge badge-bad"><i class="badge-dot"></i>Voided sales</span>
+        </div>
+        ${visibleVoidedSales.map(sale => {
+          const itemSummary = (sale.items || []).map(item => `${item.qty} × ${item.name}`).join(", ");
+          return `
+            <div style="padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.04);">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+                <div>
+                  <div style="font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;font-weight:700;">Receipt #${sale.id}</div>
+                  <div style="font-size:13px;color:var(--ink);margin-top:2px;">${new Date(sale.time).toLocaleString()}</div>
+                </div>
+                <div class="mono" style="font-size:13px;font-weight:700;color:var(--red);">${money(sale.total || 0)}</div>
+              </div>
+              <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:12px;color:var(--ink-soft);line-height:1.5;">${itemSummary || "No items recorded"}</div>
+            </div>`;
+        }).join("")}
+      </div>`;
+  }
+
   /* ---------------- Receipt modal ---------------- */
   function openReceipt(sale){
     const itemsHtml = sale.items.map(i=>
@@ -1045,20 +1186,18 @@
         : `<div style="font-size:12px;color:var(--ink-soft);padding-top:6px;">Paid via GCash${sale.reference_code ? ` · Ref: <span class=\"mono\">${sale.reference_code}</span>` : ''}</div>`}
       </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-        <button class="btn btn-danger" id="receiptVoidBtn">Void sale</button>
+        <button class="btn btn-danger" id="receiptVoidBtn" data-sale-id="${sale.id}">Void sale</button>
       </div>`;
     $("#receiptModal").hidden = false;
-
-    setTimeout(()=>{
-      const btn = $("#receiptVoidBtn");
-      if (btn) {
-        btn.addEventListener("click", async ()=>{
-          await voidLastSale(sale.id);
-          $("#receiptModal").hidden = true;
-        });
-      }
-    }, 0);
   }
+  $("#receiptDetail").addEventListener("click", async (e)=>{
+    const btn = e.target.closest("#receiptVoidBtn");
+    if (!btn) return;
+    const saleId = Number(btn.dataset.saleId || 0);
+    if (!saleId) return;
+    await voidLastSale(saleId);
+    $("#receiptModal").hidden = true;
+  });
   $("#receiptClose").addEventListener("click", ()=> $("#receiptModal").hidden = true);
   $("#receiptModal").addEventListener("click", e=>{ if(e.target===$("#receiptModal")) $("#receiptModal").hidden=true; });
 
@@ -1352,9 +1491,10 @@
   }
 
   function renderSales(){
-    $("#salesCount").textContent = sales.length ? `${sales.length} total` : "";
-    $("#salesEmpty").hidden = sales.length>0;
-    $("#salesTableBody").innerHTML = sales.map(s=>{
+    const visibleSales = window.getVisibleSalesForHistory ? window.getVisibleSalesForHistory(sales) : sales.filter(s => !(s.voided || s.status === "voided"));
+    $("#salesCount").textContent = visibleSales.length ? `${visibleSales.length} total` : "";
+    $("#salesEmpty").hidden = visibleSales.length>0;
+    $("#salesTableBody").innerHTML = visibleSales.map(s=>{
       const itemCount = s.items.reduce((a,i)=>a+i.qty,0);
       const saleDate = new Date(s.time);
       return `<tr>
