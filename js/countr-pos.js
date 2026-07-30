@@ -29,6 +29,12 @@
   const money = n => "₱" + n.toFixed(2);
   const initials = name => name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
 
+  function getProductById(productId){
+    const normalizedId = Number(productId);
+    if (!Number.isFinite(normalizedId) || normalizedId <= 0) return null;
+    return products.find(pp => Number(pp.id) === normalizedId) || null;
+  }
+
   function getSelectedDatesForCategory(category){
     const values = selectedDates[category];
     if (!Array.isArray(values)) return [];
@@ -1014,23 +1020,33 @@
     addToCart(Number(card.dataset.id));
   });
 
+  function triggerVibration(pattern = [12, 20, 12]){
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      try {
+        navigator.vibrate(pattern);
+      } catch (err) {
+        console.warn("Unable to trigger vibration", err);
+      }
+    }
+  }
+
   function addToCart(id){
-    const p = products.find(pp=>pp.id===id);
+    const p = getProductById(id);
     if(!p) return;
-    const line = cart.find(c=>c.productId===id);
+    const line = cart.find(c=>Number(c.productId)===Number(id));
     const currentQty = line ? line.qty : 0;
     if(!isRentProduct(p) && currentQty >= p.stock){ toast(`Only ${p.stock} of "${p.name}" in stock`); return; }
     if(line) line.qty++;
-    else cart.push({productId:id, qty:1});
+    else cart.push({productId:Number(id), qty:1});
     renderCart();
   }
   function changeQty(id, delta){
-    const line = cart.find(c=>c.productId===id);
+    const line = cart.find(c=>Number(c.productId)===Number(id));
     if(!line) return;
-    const p = products.find(pp=>pp.id===id);
+    const p = getProductById(id);
     const next = line.qty + delta;
-    if(next<=0){ cart = cart.filter(c=>c.productId!==id); }
-    else if(!isRentProduct(p) && next > p.stock){ toast(`Only ${p.stock} of "${p.name}" in stock`); }
+    if(next<=0){ cart = cart.filter(c=>Number(c.productId)!==Number(id)); }
+    else if(p && !isRentProduct(p) && next > p.stock){ toast(`Only ${p.stock} of "${p.name}" in stock`); }
     else { line.qty = next; }
     renderCart();
   }
@@ -1052,7 +1068,8 @@
       </div>`;
     } else {
       $("#cartItems").innerHTML = cart.map(c=>{
-        const p = products.find(pp=>pp.id===c.productId);
+        const p = getProductById(c.productId);
+        if(!p) return "";
         return `<div class="rline">
           <div class="rinfo">
             <div class="rname">${p.name}</div>
@@ -1068,7 +1085,7 @@
             <button class="rremove" data-act="rm" data-id="${p.id}">Remove</button>
           </div>
         </div>`;
-      }).join("");
+      }).filter(Boolean).join("");
     }
     const {subtotal, total} = cartTotals();
     $("#sumSubtotal").textContent = money(subtotal);
@@ -1085,6 +1102,10 @@
     if(b.dataset.act==="rm") { cart = cart.filter(c=>c.productId!==id); renderCart(); }
   });
   $("#clearCartBtn").addEventListener("click", ()=>{ cart=[]; renderCart(); });
+  const vibrateBtn = $("#vibrateBtn");
+  if (vibrateBtn) {
+    vibrateBtn.addEventListener("click", () => triggerVibration());
+  }
 
   // payment method tabs
   $$(".pay-tab").forEach(tab=>{
@@ -1164,9 +1185,10 @@
     const change = payMethod==="cash" ? tendered-total : 0;
 
     const saleItems = cart.map(c=>{
-      const p = products.find(pp=>Number(pp.id)===Number(c.productId));
+      const p = getProductById(c.productId);
+      if (!p) return null;
       return {productId:Number(p.id), name:p.name, sku:p.sku, price:p.price, qty:Number(c.qty)};
-    });
+    }).filter(Boolean);
     // decrement stock only for inventory items; rent items do not track stock changes
     if (typeof window !== 'undefined' && typeof window.applyInventoryDeduction === 'function') {
       window.applyInventoryDeduction(products, cart);
