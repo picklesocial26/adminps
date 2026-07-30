@@ -1164,14 +1164,18 @@
     const change = payMethod==="cash" ? tendered-total : 0;
 
     const saleItems = cart.map(c=>{
-      const p = products.find(pp=>pp.id===c.productId);
-      return {productId:p.id, name:p.name, sku:p.sku, price:p.price, qty:c.qty};
+      const p = products.find(pp=>Number(pp.id)===Number(c.productId));
+      return {productId:Number(p.id), name:p.name, sku:p.sku, price:p.price, qty:Number(c.qty)};
     });
     // decrement stock only for inventory items; rent items do not track stock changes
-    cart.forEach(c=>{
-      const p = products.find(pp=>pp.id===c.productId);
-      if(p && !isRentProduct(p)) p.stock = Math.max(0, p.stock - c.qty);
-    });
+    if (typeof window !== 'undefined' && typeof window.applyInventoryDeduction === 'function') {
+      window.applyInventoryDeduction(products, cart);
+    } else {
+      cart.forEach(c=>{
+        const p = products.find(pp=>Number(pp.id)===Number(c.productId));
+        if(p && !isRentProduct(p)) p.stock = Math.max(0, Number(p.stock || 0) - Number(c.qty || 0));
+      });
+    }
 
     const sale = {
       id: saleCounter++,
