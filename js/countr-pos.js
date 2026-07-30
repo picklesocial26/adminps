@@ -1017,6 +1017,7 @@
   $("#productGrid").addEventListener("click", e=>{
     const card = e.target.closest(".product-card");
     if(!card || card.disabled) return;
+    triggerVibration();
     addToCart(Number(card.dataset.id));
   });
 
@@ -1097,16 +1098,17 @@
     const b = e.target.closest("button[data-act]");
     if(!b) return;
     const id = Number(b.dataset.id);
-    if(b.dataset.act==="inc") changeQty(id, 1);
-    if(b.dataset.act==="dec") changeQty(id, -1);
+    if(b.dataset.act==="inc") {
+      triggerVibration();
+      changeQty(id, 1);
+    }
+    if(b.dataset.act==="dec") {
+      triggerVibration();
+      changeQty(id, -1);
+    }
     if(b.dataset.act==="rm") { cart = cart.filter(c=>c.productId!==id); renderCart(); }
   });
   $("#clearCartBtn").addEventListener("click", ()=>{ cart=[]; renderCart(); });
-  const vibrateBtn = $("#vibrateBtn");
-  if (vibrateBtn) {
-    vibrateBtn.addEventListener("click", () => triggerVibration());
-  }
-
   // payment method tabs
   $$(".pay-tab").forEach(tab=>{
     tab.addEventListener("click", ()=>{
