@@ -25,10 +25,12 @@ body{
   color:var(--ink);
   font-family:'Inter',system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
 }
 h1,h2,h3,.brand,.nav-label{font-family:'Space Grotesk',sans-serif;}
 .mono{font-family:'JetBrains Mono',monospace;}
 button{font-family:inherit;cursor:pointer;}
+button, input, select{min-height:44px;}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 a{color:inherit;}
 
@@ -361,8 +363,9 @@ tbody tr.drag-over{outline:2px dashed var(--accent);}
   .stat-card{padding:14px 14px;} 
   .stat-card .v{font-size:20px;} 
   .view{padding:14px;} 
-  .topbar{padding:12px 14px;flex-wrap:wrap;align-items:center;gap:10px;}
-  .topbar-right{width:100%;justify-content:space-between;}
+  .topbar{padding:12px 14px;flex-wrap:wrap;align-items:center;gap:10px;height:auto;min-height:62px;}
+  .topbar-right{width:100%;justify-content:space-between;gap:10px;}
+  .avatar{position:static;flex-shrink:0;}
   .field-row{grid-template-columns:1fr;} 
   .btn{width:100%;font-size:16px;padding:16px 18px;} 
   .panel-head{flex-wrap:wrap;gap:10px;} 
@@ -386,11 +389,12 @@ tbody tr.drag-over{outline:2px dashed var(--accent);}
   .pos-layout{grid-template-columns:1fr;gap:14px;height:auto;}
   .receipt-panel{height:auto;}
   .pos-search{margin-bottom:12px;}
-  .product-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+  .product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
   .product-card{padding:10px;}
   .product-card .pname{font-size:13px;}
   .product-swatch{aspect-ratio:1.2;min-height:90px;font-size:20px;}
-  .product-card .pmeta{font-size:12px;}
+  .product-card .pmeta{font-size:12px;flex-direction:column;align-items:flex-start;gap:4px;}
+  .product-card .pstock{max-width:none;text-align:left;}
   .pay-tabs{flex-wrap:wrap;}
   .pay-tab{flex:1 1 48%;min-width:120px;}
   .tender-quick{flex-wrap:wrap;}
@@ -402,6 +406,9 @@ tbody tr.drag-over{outline:2px dashed var(--accent);}
 }
 @media (max-width:600px){
   .view{padding:12px;}
+  .pos-search input{min-height:48px;}
+  .cat-tab{padding:9px 11px;font-size:11.5px;}
+  .receipt-panel{margin-bottom:4px;}
   .grid-cards{grid-template-columns:1fr;gap:10px;margin-bottom:14px;}
   .stat-card{padding:12px 13px;}
   .stat-card .k{font-size:10.5px;}
