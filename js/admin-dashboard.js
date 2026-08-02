@@ -1,9 +1,10 @@
-﻿// admin-dashboard.js
+// admin-dashboard.js
 let supabaseClient = null;
 let allBookings = [];
 let filteredBookings = [];
 let groupedBookings = [];
 let currentPage = 1;
+let totalBookingsCount = 0;
 const itemsPerPage = 20;
 let currentEditingBooking = null;
 let selectedBookingIds = new Set();
@@ -478,21 +479,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         const { data, error } = await supabaseClient
           .from('bookings')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .select('id,status,customer_name,phone_number,booking_date,time_slot,created_at')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(100);
 
         if (error) throw error;
 
         const bookingsData = data || [];
         trackPendingBookingNotifications(bookingsData);
-
-        const previousSnapshot = JSON.stringify(allBookings);
-        const nextSnapshot = JSON.stringify(bookingsData);
-        if (previousSnapshot !== nextSnapshot) {
-          allBookings = bookingsData;
-          applyFilters();
-          refreshCalendarView();
-        }
       } catch (err) {
         console.error('Background booking refresh failed:', err);
       }
@@ -530,39 +525,52 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Load all bookings from Supabase
-async function loadBookings() {
+// Load a single page of bookings from Supabase
+async function loadBookings(page = 1) {
   if (!supabaseClient) {
     showToast('Database not connected');
     return;
   }
 
-  try {
-    // Show loading state
-    const tbody = document.getElementById('bookingsTableBody');
-    tbody.innerHTML = '<tr><td colspan="11" class="loading-cell">Loading bookings...</td></tr>';
+  const safePage = Math.max(1, Number(page) || 1);
+  currentPage = safePage;
 
-    // Fetch all bookings
-    const { data, error } = await supabaseClient
+  try {
+    const tbody = document.getElementById('bookingsTableBody');
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="11" class="loading-cell">Loading bookings...</td></tr>';
+    }
+
+    const start = (safePage - 1) * itemsPerPage;
+    const end = start + itemsPerPage - 1;
+
+    const { data, error, count } = await supabaseClient
       .from('bookings')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(start, end);
 
     if (error) throw error;
 
     const bookingsData = data || [];
+    totalBookingsCount = typeof count === 'number' ? count : bookingsData.length;
+
     const expiredUpdated = await updateExpiredBookings(bookingsData);
     if (expiredUpdated) {
-      await loadBookings();
+      await loadBookings(safePage);
       return;
     }
 
     allBookings = bookingsData;
+    filteredBookings = bookingsData;
     selectedBookingIds.clear();
     trackPendingBookingNotifications(bookingsData);
-    console.log('Loaded bookings:', allBookings);
+    console.log('Loaded bookings page:', safePage, allBookings.length, 'of', totalBookingsCount);
 
-    applyFilters();
+    groupedBookings = groupBookings(filteredBookings);
+    renderTable();
+    updatePagination();
+    updateEarnings();
     refreshCalendarView();
   } catch (err) {
     console.error('Error loading bookings:', err);
@@ -647,41 +655,12 @@ function applyFilters() {
   const dateFrom = dateFromInput?.value || '';
   const dateTo = dateToInput?.value || '';
 
-  filteredBookings = allBookings.filter(booking => {
-    let matches = true;
-    const searchValue = [booking.reference_code, booking.customer_name, booking.phone_number, booking.customer_email, booking.booking_date, booking.court, booking.court_name]
-      .filter(Boolean)
-      .join(' ').toLowerCase();
+  if (!searchTerm && !courtFilter && !statusFilter && !dateFrom && !dateTo) {
+    loadBookings(1);
+    return;
+  }
 
-    if (searchTerm) {
-      matches = matches && searchValue.includes(searchTerm);
-    }
-
-    if (courtFilter) {
-      const courtName = booking.court || booking.court_name || '';
-      matches = matches && courtName === courtFilter;
-    }
-
-    if (statusFilter) {
-      matches = matches && booking.status === statusFilter;
-    }
-
-    if (dateFrom) {
-      matches = matches && booking.booking_date >= dateFrom;
-    }
-
-    if (dateTo) {
-      matches = matches && booking.booking_date <= dateTo;
-    }
-
-    return matches;
-  });
-
-  currentPage = 1;
-  groupedBookings = groupBookings(filteredBookings);
-  renderTable();
-  updatePagination();
-  updateEarnings();
+  loadBookings(1);
 }
 
 // Render table with pagination
@@ -1706,12 +1685,16 @@ function buildPageButtons(totalPages, currentPage) {
 }
 
 function updatePagination() {
-  const totalPages = Math.ceil(groupedBookings.length / itemsPerPage);
+  const totalPages = totalBookingsCount > 0 ? Math.ceil(totalBookingsCount / itemsPerPage) : 0;
   const prevBtn = document.getElementById('prevPageBtn');
   const nextBtn = document.getElementById('nextPageBtn');
   const pageButtons = document.getElementById('pageButtons');
 
-  if (prevBtn) prevBtn.disabled = currentPage === 1;
+  if (currentPage > totalPages && totalPages > 0) {
+    currentPage = totalPages;
+  }
+
+  if (prevBtn) prevBtn.disabled = currentPage === 1 || totalPages === 0;
   if (nextBtn) nextBtn.disabled = currentPage >= totalPages || totalPages === 0;
 
   if (!pageButtons) return;
@@ -1947,26 +1930,24 @@ function copyBookingDetailsPendingMessage() {
   }
 }
 
-function previousPage() {
+async function previousPage() {
   if (currentPage > 1) {
     currentPage--;
-    renderTable();
-    updatePagination();
+    await loadBookings(currentPage);
   }
 }
 
-function nextPage() {
-  const totalPages = Math.ceil(groupedBookings.length / itemsPerPage);
+async function nextPage() {
+  const totalPages = totalBookingsCount > 0 ? Math.ceil(totalBookingsCount / itemsPerPage) : 0;
   if (currentPage < totalPages) {
     currentPage++;
-    renderTable();
-    updatePagination();
+    await loadBookings(currentPage);
   }
 }
 
 // Refresh data
 async function refreshData() {
-  await loadBookings();
+  await loadBookings(currentPage);
 }
 
 // Edit Modal
