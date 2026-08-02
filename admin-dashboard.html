@@ -79,6 +79,27 @@
       </div>
     </div>
 
+    <div class="leaderboard-section collapsed" id="adminLeaderboardSection">
+      <div class="leaderboard-head">
+        <div>
+          <h2>Admin Confirm Leaderboard</h2>
+          <div class="toolbar-copy" id="leaderboardModeCopy">Top 6 admins this month by confirmed bookings.</div>
+        </div>
+        <div class="leaderboard-actions">
+          <div class="leaderboard-filter-group" aria-label="Leaderboard filter">
+            <button class="btn-secondary leaderboard-filter-btn active" type="button" data-leaderboard-mode="monthly" onclick="setLeaderboardMode('monthly')">Monthly</button>
+            <button class="btn-secondary leaderboard-filter-btn" type="button" data-leaderboard-mode="total" onclick="setLeaderboardMode('total')">Total</button>
+          </div>
+          <button class="btn-secondary leaderboard-toggle-btn" type="button" id="leaderboardToggleBtn" onclick="toggleLeaderboardCollapse()" aria-expanded="false">Show leaderboard</button>
+        </div>
+      </div>
+      <div class="leaderboard-content" id="leaderboardContent">
+        <div class="leaderboard-grid" id="adminLeaderboardList">
+          <div class="leaderboard-empty">Leaderboard will light up once bookings start getting confirmed this month.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Bookings Table -->
     <div class="bookings-section">
       <div class="bookings-toolbar">
