@@ -18,6 +18,7 @@ const pendingNotificationState = {
   cooldownMs: 10000
 };
 let pendingAlertAudioContext = null;
+let leaderboardMode = 'monthly';
 
 function getCurrentAdmin() {
   try {
@@ -679,9 +680,118 @@ function applyFilters() {
 
   currentPage = 1;
   groupedBookings = groupBookings(filteredBookings);
+  renderAdminLeaderboard();
   renderTable();
   updatePagination();
   updateEarnings();
+}
+
+function toggleLeaderboardCollapse() {
+  const section = document.getElementById('adminLeaderboardSection');
+  const button = document.getElementById('leaderboardToggleBtn');
+
+  if (!section || !button) return;
+
+  const isCollapsed = section.classList.toggle('collapsed');
+  button.textContent = isCollapsed ? 'Show leaderboard' : 'Hide leaderboard';
+  button.setAttribute('aria-expanded', String(!isCollapsed));
+}
+
+function setLeaderboardMode(mode) {
+  leaderboardMode = mode === 'total' ? 'total' : 'monthly';
+  const copy = document.getElementById('leaderboardModeCopy');
+  const buttons = document.querySelectorAll('.leaderboard-filter-btn');
+
+  buttons.forEach(button => {
+    const isActive = button.dataset.leaderboardMode === leaderboardMode;
+    button.classList.toggle('active', isActive);
+  });
+
+  if (copy) {
+    copy.textContent = leaderboardMode === 'total'
+      ? 'Top 6 admins overall by confirmed bookings.'
+      : 'Top 6 admins this month by confirmed bookings.';
+  }
+
+  renderAdminLeaderboard();
+}
+
+function renderAdminLeaderboard() {
+  const leaderboardList = document.getElementById('adminLeaderboardList');
+  if (!leaderboardList) return;
+
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const filteredBookings = (allBookings || []).filter(booking => {
+    const confirmedAt = booking.confirmed_at || booking.confirmedAt;
+    if (!confirmedAt) return false;
+
+    const confirmedDate = new Date(confirmedAt);
+    if (Number.isNaN(confirmedDate.getTime())) return false;
+
+    if (leaderboardMode === 'monthly') {
+      return confirmedDate.getMonth() === currentMonth && confirmedDate.getFullYear() === currentYear;
+    }
+
+    return true;
+  });
+
+  const leaderboardEntries = filteredBookings
+    .map(booking => booking.confirmed_by || booking.confirmedBy)
+    .filter(Boolean)
+    .reduce((acc, adminName) => {
+      const key = String(adminName).trim();
+      if (!key) return acc;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+  const rankedAdmins = Object.entries(leaderboardEntries)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 6);
+
+  leaderboardList.innerHTML = '';
+
+  if (!rankedAdmins.length) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'leaderboard-empty';
+    emptyState.textContent = leaderboardMode === 'total'
+      ? 'No confirmed bookings yet for the leaderboard.'
+      : 'Leaderboard will light up once bookings start getting confirmed this month.';
+    leaderboardList.appendChild(emptyState);
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣'];
+
+  rankedAdmins.forEach((admin, index) => {
+    const item = document.createElement('div');
+    item.className = `leaderboard-item rank-${index + 1}`;
+
+    const rank = document.createElement('div');
+    rank.className = 'leaderboard-rank';
+    rank.textContent = medals[index] || `${index + 1}`;
+
+    const body = document.createElement('div');
+    body.className = 'leaderboard-body';
+
+    const name = document.createElement('div');
+    name.className = 'leaderboard-name';
+    name.textContent = admin.name;
+
+    const count = document.createElement('div');
+    count.className = 'leaderboard-count';
+    count.textContent = `${admin.count} confirmed${leaderboardMode === 'monthly' ? ' this month' : ''}`;
+
+    body.appendChild(name);
+    body.appendChild(count);
+    item.appendChild(rank);
+    item.appendChild(body);
+    leaderboardList.appendChild(item);
+  });
 }
 
 // Render table with pagination
