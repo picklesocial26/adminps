@@ -4,6 +4,6 @@
   Get them from Supabase Project Settings → API.
 */
 window.SUPABASE_CONFIG = window.SUPABASE_CONFIG || {
-  url: 'https://nozisfmqzkeywefrqkok.supabase.co',
-  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk'
+  url: 'https://mpkmtcdsubopnrpyqwel.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wa210Y2RzdWJvcG5ycHlxd2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NjI3MzQsImV4cCI6MjEwMTIzODczNH0.jLAVUE1Ixl6aLVqAcaHR3olwFWAvtDjV9u2vrJDTBoQ'
 };

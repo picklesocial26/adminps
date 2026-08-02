@@ -588,13 +588,16 @@
       `;
     }
 
-    async function loadBookings() {
+    async function loadBookings(dateKey = selectedDate) {
+      if (!dateKey) return;
+
       scheduleSummary.textContent = 'Loading bookings...';
       scheduleTable.innerHTML = '<div class="slot-header"><div class="slot-heading">Time</div><div class="slot-heading">Court One</div><div class="slot-heading">Court Two</div></div>';
 
       const { data, error } = await supabaseClient
         .from('bookings')
         .select('id, reference_code, customer_name, phone_number, booking_date, time_slot, booking_time, court, court_name, status')
+        .eq('booking_date', dateKey)
         .order('booking_date', { ascending: true });
 
       if (error) {
@@ -606,11 +609,10 @@
 
       bookings = (data || [])
         .filter(item => item.booking_date && item.status !== 'pending');
-      const today = new Date();
-      const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      selectedDate = todayKey;
-      scheduleDateInput.value = todayKey;
-      renderSchedule(todayKey);
+
+      selectedDate = dateKey;
+      scheduleDateInput.value = dateKey;
+      renderSchedule(dateKey);
     }
 
     async function initSchedule() {
@@ -630,41 +632,43 @@
       const todayBtn = document.getElementById('todayBtn');
       const refreshBtn = document.getElementById('refreshBtn');
 
-      scheduleDateInput.addEventListener('change', () => {
+      scheduleDateInput.addEventListener('change', async () => {
         selectedDate = scheduleDateInput.value;
         if (selectedDate) {
-          renderSchedule(selectedDate);
+          await loadBookings(selectedDate);
         }
       });
 
-      prevDayBtn.addEventListener('click', () => {
-        const current = new Date(scheduleDateInput.value);
+      prevDayBtn.addEventListener('click', async () => {
+        const current = new Date(scheduleDateInput.value || new Date());
         current.setDate(current.getDate() - 1);
         selectedDate = current.toISOString().slice(0, 10);
         scheduleDateInput.value = selectedDate;
-        renderSchedule(selectedDate);
+        await loadBookings(selectedDate);
       });
 
-      nextDayBtn.addEventListener('click', () => {
-        const current = new Date(scheduleDateInput.value);
+      nextDayBtn.addEventListener('click', async () => {
+        const current = new Date(scheduleDateInput.value || new Date());
         current.setDate(current.getDate() + 1);
         selectedDate = current.toISOString().slice(0, 10);
         scheduleDateInput.value = selectedDate;
-        renderSchedule(selectedDate);
+        await loadBookings(selectedDate);
       });
 
-      todayBtn.addEventListener('click', () => {
+      todayBtn.addEventListener('click', async () => {
         const today = new Date();
         selectedDate = today.toISOString().slice(0, 10);
         scheduleDateInput.value = selectedDate;
-        renderSchedule(selectedDate);
+        await loadBookings(selectedDate);
       });
 
       refreshBtn.addEventListener('click', async () => {
-        await loadBookings();
+        await loadBookings(selectedDate || new Date().toISOString().slice(0, 10));
       });
 
-      await loadBookings();
+      const today = new Date();
+      selectedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      await loadBookings(selectedDate);
     }
 
     initSchedule();
