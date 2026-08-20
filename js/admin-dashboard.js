@@ -2471,6 +2471,14 @@ async function confirmBookingViaMessenger(group) {
     return;
   }
 
+  const conflicts = findBookingConflicts(allBookings, group.bookings);
+  if (conflicts.length > 0) {
+    const conflict = conflicts[0];
+    const conflictReference = conflict.reference_code || 'another booking';
+    showToast(`Cannot confirm: this slot is already booked (${conflictReference}).`);
+    return;
+  }
+
   try {
     const customerName = group.customer_name || 'N/A';
     const bookingReference = group.reference_code || 'N/A';
