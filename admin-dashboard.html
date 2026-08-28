@@ -55,6 +55,7 @@
         <input type="date" id="filterFrom" class="filter-input" onchange="applyFilters()">
         <div class="dashboard-actions">
             <a class="btn-secondary" href="Logs.html">Logs</a>
+            <button class="btn-secondary" type="button" onclick="openBlockTimesModal()">Block timeslots</button>
           <a class="btn-secondary" href="Booking%20Calendar.html">Booking Calendar</a>
           <a class="btn-secondary" href="countr-pos.html?view=pos" target="_blank" rel="noopener noreferrer">POS</a>
           <button class="btn-primary refresh-button" onclick="refreshData()">Refresh</button>
@@ -234,7 +235,7 @@
         <select id="addBookingCourt">
           <option value="">Select Court</option>
           <option value="Court One">Court One</option>
-          <option value="Court Two">Court Two</option>
+          <option value="Training Court" disabled>Training Court (Coming Soon)</option>
         </select>
       </div>
       <div class="form-group">
@@ -473,7 +474,10 @@
           <button class="btn-secondary" type="button" onclick="changeScheduleDay(1)">→</button>
           <button class="btn-secondary" type="button" onclick="goToScheduleToday()">Today</button>
         </div>
-        <button class="btn-primary" type="button" onclick="renderScheduleModal()">Refresh</button>
+        <div class="calendar-toolbar-actions">
+          <button class="btn-secondary" type="button" onclick="openBlockTimesModal()">Block timeslots</button>
+          <button class="btn-primary" type="button" onclick="renderScheduleModal()">Refresh</button>
+        </div>
       </div>
       <div id="scheduleGrid" class="schedule-grid"></div>
       <div class="calendar-detail-card">
@@ -486,6 +490,28 @@
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeCalendarModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Block Timeslots Modal -->
+<div class="modal" id="blockTimesModal">
+  <div class="modal-content block-times-modal-content">
+    <div class="modal-header">
+      <h3>Block timeslots</h3>
+      <button class="modal-close" onclick="closeBlockTimesModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="blockTimesDate">Date</label>
+        <input type="date" id="blockTimesDate" onchange="loadBlockTimesForDate()">
+      </div>
+      <p class="block-times-help">Select one or more court times to make unavailable for bookings.</p>
+      <div id="blockTimesOptions" class="block-times-options"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeBlockTimesModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveBlockedTimes()">Save blocked times</button>
     </div>
   </div>
 </div>
