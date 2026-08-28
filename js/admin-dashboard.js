@@ -10,6 +10,7 @@ let selectedBookingIds = new Set();
 let currentBookingDetailsGroup = null;
 let calendarViewDate = new Date();
 let selectedCalendarDate = null;
+let blockedTimeSlots = [];
 const adminLogsStorageKey = 'pickleAdminLogs';
 const pendingNotificationState = {
   knownPendingIds: new Set(),
@@ -1302,16 +1303,7 @@ function refreshCalendarView() {
 }
 
 function getScheduleCourts() {
-  const courts = new Set();
-  allBookings.forEach(booking => {
-    const court = booking.court || booking.court_name || null;
-    if (court) courts.add(court);
-  });
-  if (courts.size === 0) {
-    courts.add('Court 1');
-    courts.add('Court 2');
-  }
-  return Array.from(courts);
+  return ['Court One', 'Training Court'];
 }
 
 function onScheduleDateChange(event) {
@@ -1319,6 +1311,7 @@ function onScheduleDateChange(event) {
   if (!input || !input.value) return;
   selectedCalendarDate = input.value;
   renderScheduleModal();
+  loadBlockedTimesForSchedule();
 }
 
 function parseBookingHour(timeValue) {
@@ -1371,6 +1364,7 @@ function renderScheduleModal() {
   const courts = getScheduleCourts();
 
   const bookings = getBookingsForDate(selectedCalendarDate);
+  const blockedByCourtHour = new Set(blockedTimeSlots.map(block => `${block.court}|${parseBookingHour(block.time_slot)}`));
   const bookingsByCourtHour = {};
   courts.forEach(court => { bookingsByCourtHour[court] = {}; });
   bookings.forEach(booking => {
@@ -1393,7 +1387,7 @@ function renderScheduleModal() {
   courts.forEach(court => {
     const cell = document.createElement('div');
     cell.className = 'schedule-cell header';
-    cell.textContent = court;
+    cell.textContent = court === 'Court One' ? 'Court 1' : 'Training Court - Coming Soon';
     headerRow.appendChild(cell);
   });
   grid.appendChild(headerRow);
@@ -1411,7 +1405,13 @@ function renderScheduleModal() {
       slotCell.type = 'button';
       slotCell.className = 'schedule-cell slot-cell';
       const slotBookings = bookingsByCourtHour[court]?.[hour] || [];
-      if (slotBookings.length === 0) {
+      if (court === 'Training Court') {
+        slotCell.classList.add('slot-coming-soon');
+        slotCell.innerHTML = '<span class="slot-subtitle">Coming Soon</span>';
+      } else if (blockedByCourtHour.has(`${court}|${hour}`)) {
+        slotCell.classList.add('slot-blocked');
+        slotCell.innerHTML = '<span class="slot-initials">Blocked</span><span class="slot-subtitle">Unavailable</span>';
+      } else if (slotBookings.length === 0) {
         slotCell.classList.add('slot-empty');
         slotCell.innerHTML = '<span class="slot-subtitle">Available</span>';
       } else {
@@ -1459,6 +1459,20 @@ function renderScheduleModal() {
   }
 }
 
+async function loadBlockedTimesForSchedule() {
+  if (!supabaseClient || !selectedCalendarDate) return;
+  const { data, error } = await supabaseClient
+    .from('blocked_time_slots')
+    .select('court, time_slot')
+    .eq('blocked_date', selectedCalendarDate);
+  if (error) {
+    console.error('Failed to load schedule blocks:', error);
+    return;
+  }
+  blockedTimeSlots = data || [];
+  renderScheduleModal();
+}
+
 function formatScheduleHour(hour) {
   const suffix = hour < 12 ? 'AM' : 'PM';
   const displayHour = hour % 12 === 0 ? 12 : hour % 12;
@@ -1472,6 +1486,96 @@ function openCalendarModal(date = new Date()) {
   selectedCalendarDate = formatDateKey(date);
   document.getElementById('calendarModal').classList.add('open');
   renderScheduleModal();
+  loadBlockedTimesForSchedule();
+}
+
+function getBlockTimeOptions() {
+  const options = [];
+  for (let hour = 0; hour < 24; hour++) {
+    options.push({ court: 'Court One', hour, time_slot: formatScheduleHour(hour) });
+  }
+  return options;
+}
+
+async function loadBlockTimesForDate() {
+  const dateInput = document.getElementById('blockTimesDate');
+  const optionsContainer = document.getElementById('blockTimesOptions');
+  if (!dateInput || !optionsContainer || !dateInput.value) return;
+
+  optionsContainer.innerHTML = '<div class="empty-list">Loading timeslots...</div>';
+  const { data, error } = await supabaseClient
+    .from('blocked_time_slots')
+    .select('court, time_slot')
+    .eq('blocked_date', dateInput.value);
+  if (error) {
+    console.error('Failed to load blocked times:', error);
+    optionsContainer.innerHTML = '<div class="empty-list">Unable to load blocked timeslots.</div>';
+    return;
+  }
+
+  blockedTimeSlots = data || [];
+  const bookedKeys = new Set();
+  getBookingsForDate(dateInput.value).forEach(booking => {
+    const court = booking.court || booking.court_name || '';
+    const hour = parseBookingHour(booking.time_slot || booking.booking_time);
+    if (hour !== null) bookedKeys.add(`${court}|${hour}`);
+  });
+  optionsContainer.innerHTML = '';
+  const courtOneColumn = document.createElement('div');
+  courtOneColumn.className = 'block-time-court-column';
+  courtOneColumn.innerHTML = '<h4>Court 1</h4>';
+  const trainingColumn = document.createElement('div');
+  trainingColumn.className = 'block-time-court-column training-court-column';
+  trainingColumn.innerHTML = '<h4>Training Court</h4><div class="training-coming-soon">Coming Soon</div>';
+
+  getBlockTimeOptions().forEach(option => {
+    const isBooked = bookedKeys.has(`${option.court}|${option.hour}`);
+    const isBlocked = blockedTimeSlots.some(block => block.court === option.court && parseBookingHour(block.time_slot) === option.hour);
+    const label = document.createElement('label');
+    label.className = `block-time-option${isBooked ? ' is-booked' : ''}`;
+    label.innerHTML = `<input type="checkbox" value="${option.hour}" data-court="${option.court}"${isBlocked ? ' checked' : ''}${isBooked ? ' disabled' : ''}><span>${option.court} · ${option.time_slot}${isBooked ? ' · Booked' : ''}</span>`;
+    courtOneColumn.appendChild(label);
+  });
+  optionsContainer.appendChild(courtOneColumn);
+  optionsContainer.appendChild(trainingColumn);
+}
+
+function openBlockTimesModal() {
+  const dateInput = document.getElementById('blockTimesDate');
+  if (!dateInput) return;
+  dateInput.value = selectedCalendarDate || formatDateKey(new Date());
+  document.getElementById('blockTimesModal').classList.add('open');
+  loadBlockTimesForDate();
+}
+
+function closeBlockTimesModal() {
+  document.getElementById('blockTimesModal')?.classList.remove('open');
+}
+
+async function saveBlockedTimes() {
+  const date = document.getElementById('blockTimesDate')?.value;
+  const options = [...document.querySelectorAll('#blockTimesOptions input[type="checkbox"]:checked')];
+  if (!date) return showToast('Select a date first');
+  if (!supabaseClient) return showToast('Database connection unavailable');
+
+  const selected = options.map(input => ({ blocked_date: date, court: input.dataset.court, time_slot: formatScheduleHour(Number(input.value)) }));
+  const { error: deleteError } = await supabaseClient.from('blocked_time_slots').delete().eq('blocked_date', date);
+  if (deleteError) {
+    console.error('Failed to update blocked times:', deleteError);
+    return showToast('Could not update blocked timeslots');
+  }
+  if (selected.length) {
+    const { error } = await supabaseClient.from('blocked_time_slots').insert(selected);
+    if (error) {
+      console.error('Failed to save blocked times:', error);
+      return showToast('Could not save blocked timeslots');
+    }
+  }
+  blockedTimeSlots = selected;
+  selectedCalendarDate = date;
+  closeBlockTimesModal();
+  renderScheduleModal();
+  showToast(`${selected.length} timeslot${selected.length === 1 ? '' : 's'} blocked`);
 }
 
 function closeCalendarModal() {
@@ -1483,12 +1587,14 @@ function changeScheduleDay(step) {
   current.setDate(current.getDate() + step);
   selectedCalendarDate = formatDateKey(current);
   renderScheduleModal();
+  loadBlockedTimesForSchedule();
 }
 
 function goToScheduleToday() {
   const today = new Date();
   selectedCalendarDate = formatDateKey(today);
   renderScheduleModal();
+  loadBlockedTimesForSchedule();
 }
 
 // Update earnings cards
