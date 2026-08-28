@@ -1058,6 +1058,116 @@ main {
   flex-wrap: wrap;
 }
 
+.calendar-toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.block-times-modal-content {
+  max-width: 720px;
+}
+
+.block-times-help {
+  color: var(--gray-text);
+  margin: 0 0 14px;
+}
+
+.block-times-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.block-time-court-column {
+  min-width: 0;
+}
+
+.block-time-court-column h4 {
+  margin: 0 0 10px;
+  color: var(--text-primary);
+}
+
+.training-court-column {
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.training-coming-soon {
+  color: var(--gray-text);
+  font-weight: 600;
+}
+
+.block-time-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all 0.22s ease;
+  font-weight: 500;
+}
+
+.block-time-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.block-time-option input {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  background: rgba(255, 255, 255, 0.03);
+  flex-shrink: 0;
+}
+
+.block-time-option input:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.block-time-option input:checked {
+  background: #dc2626;
+  border-color: #dc2626;
+  position: relative;
+}
+
+.block-time-option input:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.block-time-option:has(input:checked) {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.block-time-option.is-booked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .block-times-options {
+    grid-template-columns: 1fr;
+  }
+}
+
 .calendar-date-controls {
   display: flex;
   align-items: center;
@@ -1121,6 +1231,23 @@ main {
 }
 
 .slot-empty {
+  color: var(--gray-text);
+}
+
+.slot-blocked {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.slot-coming-soon {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: var(--gray-text);
+  cursor: not-allowed;
+}
+
+.slot-coming-soon .slot-subtitle {
   color: var(--gray-text);
 }
 
