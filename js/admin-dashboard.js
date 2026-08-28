@@ -94,11 +94,13 @@ async function registerPendingBookingNotifications() {
 
   await requestPendingNotificationPermission();
   
-  if ('wakeLock' in navigator) {
+  if ('wakeLock' in navigator && !document.hidden) {
     try {
       await navigator.wakeLock.request('screen');
     } catch (err) {
-      console.warn('Wake lock request failed', err);
+      if (err?.name !== 'NotAllowedError') {
+        console.warn('Wake lock request failed', err);
+      }
     }
   }
 }
@@ -507,7 +509,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           try {
             await navigator.wakeLock.request('screen');
           } catch (err) {
-            console.warn('Wake lock renewal failed', err);
+            if (err?.name !== 'NotAllowedError') {
+              console.warn('Wake lock renewal failed', err);
+            }
           }
         }
       });
