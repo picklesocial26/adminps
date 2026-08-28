@@ -106,7 +106,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             .select('time_slot,court,customer_name,status,receipt_reference,created_at')
             .eq('booking_date', bookingDate);
           if (error) throw error;
-          return { bookings: rows || [] };
+          const { data: blockedRows, error: blockedError } = await supabaseClient
+            .from('blocked_time_slots')
+            .select('time_slot,court')
+            .eq('blocked_date', bookingDate);
+          if (blockedError) throw blockedError;
+          return { bookings: [...(rows || []), ...(blockedRows || []).map(row => ({ ...row, status: 'blocked', customer_name: 'Unavailable' }))] };
         }
 
         if (action === 'create-booking') {
@@ -284,6 +289,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             const key = `${dk}|${row.time_slot}|${courtIndex}`;
 
+            if (status === 'blocked') {
+              bookedSlots[key] = 'Unavailable';
+              delete pendingSlotsWithTimer[key];
+              return;
+            }
+
             if (status === 'pending') {
               // Reconstruct pending timer from backend `created_at` so the timer
               // persists across page reloads. Use created_at fallback to now.
@@ -366,7 +377,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     '11:00 PM - 12:00 AM'
   ];
 
-  const COURTS = ['Court One', 'Court Two'];
+  const COURTS = ['Court One', 'Training Court'];
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -504,8 +515,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const isPendingActive = isPendingTimerActive(key);
 
+        if (court === 'Training Court') {
+          btn.classList.add('slot-coming-soon');
+          btn.textContent = 'Coming Soon';
+          btn.disabled = true;
+        }
+
         // If the slot is booked in Supabase, mark as booked and show initials
-        if (bookedSlots[key]) {
+        else if (bookedSlots[key]) {
           btn.classList.add('slot-booked');
           btn.textContent = getInitials(bookedSlots[key]);
           btn.disabled = true;
@@ -889,7 +906,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
       
       let courtSections = '';
-      const courtOrder = ['Court One', 'Court Two'];
+      const courtOrder = ['Court One', 'Training Court'];
       const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
       let emojiIndex = 0;
       
