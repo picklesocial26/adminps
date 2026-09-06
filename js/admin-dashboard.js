@@ -1273,6 +1273,7 @@ async function extendBookingTime(group, requestedSlot = null) {
       `Added ${nextSlot.timeSlot} for ${source.customer_name || 'booking'} at ${nextSlot.court}.`,
       { reference_code: source.reference_code, customer_name: source.customer_name, booking_date: nextSlot.date, booking_time: nextSlot.timeSlot }
     );
+    closeExtendBookingModal();
     showToast('Booking extended by 1 hour');
     await loadBookings();
   } catch (error) {
