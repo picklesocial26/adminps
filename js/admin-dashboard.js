@@ -1251,7 +1251,8 @@ async function extendBookingTime(group, requestedSlot = null) {
     return;
   }
 
-  const confirmed = confirm(`Extend ${source.customer_name || 'this booking'} to ${nextSlot.timeSlot}?\n\nAdditional rate: ₱${getBookingRateForDate(nextSlot.date).toLocaleString()}`);
+  const extensionRate = getBookingRateForDate(nextSlot.date, nextSlot.timeSlot);
+  const confirmed = confirm(`Extend ${source.customer_name || 'this booking'} to ${nextSlot.timeSlot}?\n\nAdditional rate: ₱${extensionRate.toLocaleString()}`);
   if (!confirmed) return;
 
   const payload = { ...source };
@@ -1259,7 +1260,7 @@ async function extendBookingTime(group, requestedSlot = null) {
   payload.booking_date = nextSlot.date;
   payload.time_slot = nextSlot.timeSlot;
   payload.booking_time = nextSlot.timeSlot;
-  payload.price = getBookingRateForDate(nextSlot.date);
+  payload.price = extensionRate;
   payload.rate = payload.price;
   payload.created_at = new Date().toISOString();
 
@@ -2271,7 +2272,8 @@ function updateAddBookingRate() {
   const rateValue = document.getElementById('addBookingRateValue');
   if (!dateInput || !rateValue) return;
 
-  const rate = getBookingRateForDate(dateInput.value);
+  const timeInput = document.getElementById('addBookingTime');
+  const rate = getBookingRateForDate(dateInput.value, timeInput?.value || '');
   rateValue.textContent = `₱${rate}`;
 }
 
@@ -2302,7 +2304,7 @@ async function submitAddBooking() {
     return;
   }
 
-  const price = getBookingRateForDate(bookingDate);
+  const price = getBookingRateForDate(bookingDate, timeSlot);
   const referenceCode = `PKL-${Date.now().toString(36).toUpperCase()}`;
 
   const payload = {
