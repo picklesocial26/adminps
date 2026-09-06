@@ -400,13 +400,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   }
 
-  // Monday-Thursday: ₱500. Friday-Sunday: ₱550.
+  // Monday-Thursday: ₱500, except Monday 1AM-5AM: ₱550. Friday-Sunday: ₱550.
   function getRate(slot, dateValue) {
     if (TEST_MODE_FORCE_ONE_PHP) {
       return 1;
     }
     const day = new Date(`${dateValue}T00:00:00`).getDay();
-    return day === 0 || day === 5 || day === 6 ? 550 : 500;
+    const startTime = String(slot || '').split('-')[0].trim().toUpperCase();
+    const timeMatch = startTime.match(/^(\d{1,2})(?::\d{2})?\s*(AM|PM)?$/);
+    const startHour = timeMatch ? Number(timeMatch[1]) % 12 + (timeMatch[2] === 'PM' ? 12 : 0) : null;
+    const isMondayEarlyMorning = day === 1 && startHour >= 1 && startHour < 5;
+    return day === 0 || day === 5 || day === 6 || isMondayEarlyMorning ? 550 : 500;
   }
 
   // Helper function to check if a slot is in the past
