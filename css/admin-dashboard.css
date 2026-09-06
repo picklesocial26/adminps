@@ -1192,6 +1192,78 @@ main {
   font-size: 0.85rem;
 }
 
+.expired-bookings-modal-content {
+  max-width: 720px;
+}
+
+.modal-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 400;
+  margin-top: 5px;
+}
+
+.expired-bookings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.expired-count {
+  color: #fca5a5;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.expired-booking-list {
+  display: grid;
+  gap: 8px;
+  max-height: 48vh;
+  overflow-y: auto;
+}
+
+.expired-booking-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 9px;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.expired-booking-details {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.expired-booking-details strong,
+.expired-booking-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expired-booking-details strong {
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+.expired-booking-details span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.expired-booking-item .action-btn {
+  min-width: 72px;
+  padding: 7px 10px;
+  flex-shrink: 0;
+}
+
 /* Booking Schedule Modal */
 .calendar-modal-content {
   max-width: 1120px;
