@@ -553,7 +553,8 @@
     <div class="modal-body">
       <div class="form-group">
         <label for="extendBookingCustomer">Customer / player</label>
-        <select id="extendBookingCustomer" onchange="updateExtendBookingFields(true)"></select>
+        <select id="extendBookingCustomer" class="slot-value-source" tabindex="-1" aria-hidden="true"></select>
+        <div class="customer-picker" id="extendCustomerPicker" role="listbox" aria-label="Customers and players"></div>
       </div>
       <div class="form-group">
         <label for="extendBookingDate">Date</label>
