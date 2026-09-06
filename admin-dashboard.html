@@ -564,7 +564,8 @@
       </div>
       <div class="form-group">
         <label for="extendBookingTime">Add time slot</label>
-        <select id="extendBookingTime" onchange="updateExtendSelectedSlotStatus()"></select>
+        <select id="extendBookingTime" class="slot-value-source" tabindex="-1" aria-hidden="true"></select>
+        <div class="slot-picker" id="extendTimeSlotPicker" role="listbox" aria-label="Available booking time slots"></div>
         <div class="selected-slot-status" id="extendSelectedSlotStatus" aria-live="polite"></div>
         <div class="slot-status-legend" aria-label="Time slot status legend">
           <span class="legend-item available"><i class="legend-dot"></i>Available</span>
