@@ -961,7 +961,8 @@ let extendBookingGroups = [];
 function openExtendBookingModal() {
   const modal = document.getElementById('extendBookingModal');
   const customerSelect = document.getElementById('extendBookingCustomer');
-  if (!modal || !customerSelect) return;
+  const customerPicker = document.getElementById('extendCustomerPicker');
+  if (!modal || !customerSelect || !customerPicker) return;
 
   const todayKey = formatDateKey(new Date());
   const yesterday = new Date();
@@ -983,9 +984,11 @@ function openExtendBookingModal() {
     return (nextSlot && nextSlot.date >= todayKey) || hasYesterdayBooking;
   });
   customerSelect.innerHTML = '';
+  customerPicker.innerHTML = '';
 
   if (!extendBookingGroups.length) {
     customerSelect.innerHTML = '<option value="">No active bookings found</option>';
+    customerPicker.innerHTML = '<div class="empty-list">No active bookings found.</div>';
     modal.classList.add('open');
     return;
   }
@@ -995,10 +998,24 @@ function openExtendBookingModal() {
     option.value = String(index);
     option.textContent = `${group.customer_name} · ${group.reference_code}`;
     customerSelect.appendChild(option);
+
+    const customerButton = document.createElement('button');
+    customerButton.type = 'button';
+    customerButton.className = 'customer-picker-row';
+    customerButton.setAttribute('role', 'option');
+    customerButton.innerHTML = `<span class="customer-picker-name">${group.customer_name}</span><span class="customer-picker-reference">${group.reference_code}</span>`;
+    customerButton.onclick = () => {
+      customerSelect.value = String(index);
+      customerPicker.querySelectorAll('.customer-picker-row').forEach(row => row.classList.remove('selected'));
+      customerButton.classList.add('selected');
+      updateExtendBookingFields(true);
+    };
+    customerPicker.appendChild(customerButton);
   });
 
   modal.classList.add('open');
   updateExtendBookingFields(true);
+  customerPicker.querySelector('.customer-picker-row')?.classList.add('selected');
 }
 
 async function updateExtendBookingFields(resetDate = false) {
@@ -1007,6 +1024,7 @@ async function updateExtendBookingFields(resetDate = false) {
   const courtSelect = document.getElementById('extendBookingCourt');
   const timeSelect = document.getElementById('extendBookingTime');
   const timePicker = document.getElementById('extendTimeSlotPicker');
+  const customerPicker = document.getElementById('extendCustomerPicker');
   const group = extendBookingGroups[Number(customerSelect?.value)];
   if (!group || !dateInput || !courtSelect || !timeSelect || !timePicker) return;
 
@@ -1106,6 +1124,9 @@ async function updateExtendBookingFields(resetDate = false) {
   updateExtendSelectedSlotStatus();
   const selectedRow = [...timePicker.querySelectorAll('.slot-picker-row')].find(row => row.querySelector('.slot-picker-time')?.textContent === timeSelect.value);
   selectedRow?.classList.add('selected');
+  customerPicker?.querySelectorAll('.customer-picker-row').forEach((row, index) => {
+    row.classList.toggle('selected', index === Number(customerSelect.value));
+  });
 }
 
 function updateExtendSelectedSlotStatus() {
