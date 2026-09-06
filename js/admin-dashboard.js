@@ -1006,8 +1006,9 @@ async function updateExtendBookingFields(resetDate = false) {
   const dateInput = document.getElementById('extendBookingDate');
   const courtSelect = document.getElementById('extendBookingCourt');
   const timeSelect = document.getElementById('extendBookingTime');
+  const timePicker = document.getElementById('extendTimeSlotPicker');
   const group = extendBookingGroups[Number(customerSelect?.value)];
-  if (!group || !dateInput || !courtSelect || !timeSelect) return;
+  if (!group || !dateInput || !courtSelect || !timeSelect || !timePicker) return;
 
   const source = [...group.bookings]
     .filter(booking => !['cancelled', 'expired'].includes(String(booking.status || '').toLowerCase()))
@@ -1041,6 +1042,7 @@ async function updateExtendBookingFields(resetDate = false) {
   const selectedCourt = courtSelect.value;
   const normalizedCourt = String(selectedCourt).trim().toLowerCase();
   timeSelect.innerHTML = '';
+  timePicker.innerHTML = '';
   for (let hour = 0; hour < 24; hour++) {
     const option = document.createElement('option');
     const formatTime = minutes => {
@@ -1081,12 +1083,29 @@ async function updateExtendBookingFields(resetDate = false) {
     option.className = `slot-option slot-option-${status.toLowerCase().replace(/\s+/g, '-')}`;
     option.disabled = status !== 'Available';
     timeSelect.appendChild(option);
+
+    const slotButton = document.createElement('button');
+    slotButton.type = 'button';
+    slotButton.className = `slot-picker-row ${status.toLowerCase().replace(/\s+/g, '-')}`;
+    slotButton.setAttribute('role', 'option');
+    slotButton.setAttribute('aria-label', `${timeSlot}, ${status}`);
+    slotButton.disabled = option.disabled;
+    slotButton.innerHTML = `<span class="slot-picker-time">${timeSlot}</span><span class="slot-picker-status">${status}</span><span class="slot-picker-check">${status === 'Available' ? '○' : '—'}</span>`;
+    slotButton.onclick = () => {
+      timeSelect.value = timeSlot;
+      updateExtendSelectedSlotStatus();
+      timePicker.querySelectorAll('.slot-picker-row').forEach(row => row.classList.remove('selected'));
+      slotButton.classList.add('selected');
+    };
+    timePicker.appendChild(slotButton);
   }
   const defaultOption = nextSlot && [...timeSelect.options].find(option => option.value === nextSlot.timeSlot);
   if (defaultOption && !defaultOption.disabled) {
     timeSelect.value = nextSlot.timeSlot;
   }
   updateExtendSelectedSlotStatus();
+  const selectedRow = [...timePicker.querySelectorAll('.slot-picker-row')].find(row => row.querySelector('.slot-picker-time')?.textContent === timeSelect.value);
+  selectedRow?.classList.add('selected');
 }
 
 function updateExtendSelectedSlotStatus() {
@@ -1105,6 +1124,10 @@ function updateExtendSelectedSlotStatus() {
   const status = statusMatch ? statusMatch[1] : 'Available';
   statusDisplay.textContent = `${selectedOption.value} · ${status}`;
   statusDisplay.className = `selected-slot-status ${status.toLowerCase().replace(/\s+/g, '-')}`;
+
+  document.querySelectorAll('#extendTimeSlotPicker .slot-picker-row').forEach(row => {
+    row.classList.toggle('selected', row.querySelector('.slot-picker-time')?.textContent === selectedOption.value);
+  });
 }
 
 function closeExtendBookingModal() {
