@@ -20,6 +20,7 @@ const pendingNotificationState = {
 };
 let pendingAlertAudioContext = null;
 let leaderboardMode = 'monthly';
+let sidebarTouchStart = null;
 
 function toggleSidebar() {
   const sidebar = document.getElementById('adminSidebar');
@@ -42,6 +43,35 @@ function closeSidebar() {
   document.body.classList.remove('sidebar-open');
   if (toggle) toggle.setAttribute('aria-expanded', 'false');
 }
+
+document.addEventListener('touchstart', (event) => {
+  if (window.innerWidth > 900 || event.touches.length !== 1) return;
+  const target = event.target;
+  if (target.closest('input, select, textarea, button, a')) return;
+  sidebarTouchStart = {
+    x: event.touches[0].clientX,
+    y: event.touches[0].clientY
+  };
+}, { passive: true });
+
+document.addEventListener('touchend', (event) => {
+  if (window.innerWidth > 900 || !sidebarTouchStart || event.changedTouches.length !== 1) return;
+
+  const endTouch = event.changedTouches[0];
+  const deltaX = endTouch.clientX - sidebarTouchStart.x;
+  const deltaY = Math.abs(endTouch.clientY - sidebarTouchStart.y);
+  const sidebar = document.getElementById('adminSidebar');
+  const isOpen = sidebar?.classList.contains('open');
+  const horizontalSwipe = Math.abs(deltaX) >= 60 && Math.abs(deltaX) > deltaY * 1.35;
+
+  if (horizontalSwipe && deltaX > 0 && !isOpen && sidebarTouchStart.x <= 28) {
+    toggleSidebar();
+  } else if (horizontalSwipe && deltaX < 0 && isOpen) {
+    closeSidebar();
+  }
+
+  sidebarTouchStart = null;
+}, { passive: true });
 
 function getCurrentAdmin() {
   try {
@@ -3217,33 +3247,3 @@ function logout() {
   if (confirm('Are you sure you want to logout?')) {
     sessionStorage.removeItem('adminToken');
     sessionStorage.removeItem('adminProfile');
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('adminProfile');
-    window.location.href = 'index.html';
-  }
-}
-
-// Toast notification
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-// Close modal on escape key
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeEditModal();
-    closeReceiptViewer();
-    closeBookingDetails();
-    closeTodayModal();
-    closeCalendarModal();
-  }
-});
-
-
-
-
