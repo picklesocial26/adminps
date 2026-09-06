@@ -47,6 +47,7 @@
     <a class="sidebar-link" href="Logs.html"><span class="sidebar-icon">≡</span>Activity Logs</a>
     <button class="sidebar-link sidebar-button" type="button" onclick="openBlockTimesModal(); closeSidebar()"><span class="sidebar-icon">◷</span>Block Timeslots</button>
     <button class="sidebar-link sidebar-button" type="button" onclick="openExtendBookingModal(); closeSidebar()"><span class="sidebar-icon">＋</span>Extend Booking Time</button>
+    <button class="sidebar-link sidebar-button" type="button" onclick="openExpiredBookingsModal(); closeSidebar()"><span class="sidebar-icon">⌛</span>Expired Bookings</button>
   </div>
   <div class="sidebar-footer">
     <div class="sidebar-admin" id="sidebarAdminProfile">
@@ -580,6 +581,29 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeExtendBookingModal()">Cancel</button>
       <button class="btn-primary" onclick="submitExtendBooking()">Add time</button>
+    </div>
+  </div>
+</div>
+
+<!-- Expired Bookings Modal -->
+<div class="modal" id="expiredBookingsModal">
+  <div class="modal-content expired-bookings-modal-content">
+    <div class="modal-header">
+      <div>
+        <h3>Expired bookings</h3>
+        <p class="modal-subtitle" id="expiredBookingsSummary">Review expired booking slots before deleting.</p>
+      </div>
+      <button class="modal-close" onclick="closeExpiredBookingsModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="expired-bookings-toolbar">
+        <span class="expired-count" id="expiredBookingsCount">0 expired</span>
+        <button class="btn-secondary delete-btn" type="button" id="deleteAllExpiredBtn" onclick="deleteAllExpiredBookings()" disabled>Delete all expired</button>
+      </div>
+      <div class="expired-booking-list" id="expiredBookingList"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeExpiredBookingsModal()">Close</button>
     </div>
   </div>
 </div>
