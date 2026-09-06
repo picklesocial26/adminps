@@ -1058,6 +1058,10 @@ main {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .legend-dot {
@@ -1067,11 +1071,35 @@ main {
   border-radius: 50%;
 }
 
-.legend-dot.available { background: #22c55e; }
-.legend-dot.booked { background: #ef4444; }
-.legend-dot.already-added { background: #ec4899; }
-.legend-dot.pending { background: #f59e0b; }
-.legend-dot.blocked { background: #991b1b; }
+.legend-item.available { color: #86efac; }
+.legend-item.booked { color: #fca5a5; }
+.legend-item.already-added { color: #f9a8d4; }
+.legend-item.pending { color: #fcd34d; }
+.legend-item.blocked { color: #f87171; }
+.legend-item.available .legend-dot { background: #22c55e; }
+.legend-item.booked .legend-dot { background: #ef4444; }
+.legend-item.already-added .legend-dot { background: #ec4899; }
+.legend-item.pending .legend-dot { background: #f59e0b; }
+.legend-item.blocked .legend-dot { background: #991b1b; }
+
+.selected-slot-status {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.selected-slot-status.available { color: #86efac; border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.1); }
+.selected-slot-status.booked { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.1); }
+.selected-slot-status.already-added { color: #f9a8d4; border-color: rgba(236, 72, 153, 0.35); background: rgba(236, 72, 153, 0.1); }
+.selected-slot-status.pending { color: #fcd34d; border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.1); }
+.selected-slot-status.blocked { color: #f87171; border-color: rgba(153, 27, 27, 0.45); background: rgba(153, 27, 27, 0.12); }
 
 .form-group input:focus,
 .form-group select:focus {
