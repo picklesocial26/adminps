@@ -2085,16 +2085,6 @@ main {
 }
 
 @media (max-width: 900px) {
-  nav {
-    position: sticky;
-    z-index: 400;
-  }
-
-  .menu-toggle {
-    position: relative;
-    z-index: 401;
-  }
-
   .sidebar {
     width: min(290px, 86vw);
     transform: translateX(-105%);
@@ -2122,7 +2112,7 @@ main {
   .sidebar-overlay {
     position: fixed;
     inset: 0;
-    z-index: 300;
+    z-index: 250;
     display: block;
     background: rgba(0, 0, 0, 0.58);
     opacity: 0;
