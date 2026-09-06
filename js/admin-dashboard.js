@@ -1918,6 +1918,131 @@ async function saveBlockedTimes() {
   showToast(`${selected.length} timeslot${selected.length === 1 ? '' : 's'} blocked`);
 }
 
+function getExpiredBookings() {
+  return (allBookings || []).filter(booking => String(booking.status || '').toLowerCase() === 'expired');
+}
+
+function openExpiredBookingsModal() {
+  const modal = document.getElementById('expiredBookingsModal');
+  if (!modal) return;
+  renderExpiredBookings();
+  modal.classList.add('open');
+}
+
+function closeExpiredBookingsModal() {
+  document.getElementById('expiredBookingsModal')?.classList.remove('open');
+}
+
+function renderExpiredBookings() {
+  const list = document.getElementById('expiredBookingList');
+  const count = document.getElementById('expiredBookingsCount');
+  const deleteAllButton = document.getElementById('deleteAllExpiredBtn');
+  const summary = document.getElementById('expiredBookingsSummary');
+  if (!list || !count || !deleteAllButton || !summary) return;
+
+  const expiredBookings = getExpiredBookings();
+  count.textContent = `${expiredBookings.length} expired slot${expiredBookings.length === 1 ? '' : 's'}`;
+  deleteAllButton.disabled = expiredBookings.length === 0;
+  summary.textContent = expiredBookings.length
+    ? 'Delete expired slots manually when they are no longer needed.'
+    : 'No expired bookings to review.';
+  list.innerHTML = '';
+
+  if (!expiredBookings.length) {
+    list.innerHTML = '<div class="empty-list">No expired bookings found.</div>';
+    return;
+  }
+
+  expiredBookings
+    .slice()
+    .sort((a, b) => String(b.booking_date || '').localeCompare(String(a.booking_date || '')))
+    .forEach(booking => {
+      const item = document.createElement('div');
+      item.className = 'expired-booking-item';
+
+      const details = document.createElement('div');
+      details.className = 'expired-booking-details';
+      const customer = document.createElement('strong');
+      customer.textContent = booking.customer_name || 'Unknown customer';
+      const meta = document.createElement('span');
+      meta.textContent = `${booking.reference_code || 'No reference'} · ${booking.booking_date || 'No date'} · ${booking.time_slot || booking.booking_time || 'No time'} · ${booking.court || booking.court_name || 'Court'}`;
+      details.append(customer, meta);
+
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'action-btn delete-btn';
+      deleteButton.textContent = 'Delete';
+      deleteButton.onclick = () => deleteExpiredBooking(booking);
+      item.append(details, deleteButton);
+      list.appendChild(item);
+    });
+}
+
+async function deleteExpiredBooking(booking) {
+  if (!supabaseClient || !booking?.id) {
+    showToast('Database connection unavailable');
+    return;
+  }
+  const confirmed = confirm(`Delete expired booking for ${booking.customer_name || 'this customer'}?\n\n${booking.booking_date || ''} · ${booking.time_slot || booking.booking_time || ''}`);
+  if (!confirmed) return;
+
+  const { error } = await supabaseClient.from('bookings').delete().eq('id', booking.id);
+  if (error) {
+    console.error('Failed to delete expired booking:', error);
+    showToast('Failed to delete expired booking');
+    return;
+  }
+
+  await addAdminLog(
+    'deleted',
+    'Expired booking deleted',
+    `Deleted expired booking ${booking.reference_code || booking.id} for ${booking.customer_name || 'Unknown customer'}.`,
+    {
+      bookingId: booking.id,
+      reference_code: booking.reference_code,
+      customer_name: booking.customer_name,
+      booking_date: booking.booking_date,
+      booking_time: booking.booking_time || booking.time_slot,
+      court: booking.court || booking.court_name,
+      amount: booking.price || booking.rate
+    }
+  );
+  showToast('Expired booking deleted');
+  await loadBookings();
+  renderExpiredBookings();
+}
+
+async function deleteAllExpiredBookings() {
+  const expiredBookings = getExpiredBookings();
+  if (!expiredBookings.length || !supabaseClient) return;
+  const confirmed = confirm(`Delete all ${expiredBookings.length} expired booking slots? This cannot be undone.`);
+  if (!confirmed) return;
+
+  const ids = expiredBookings.map(booking => booking.id).filter(Boolean);
+  const { error } = await supabaseClient.from('bookings').delete().in('id', ids);
+  if (error) {
+    console.error('Failed to delete expired bookings:', error);
+    showToast('Failed to delete expired bookings');
+    return;
+  }
+
+  await addAdminLog('deleted', 'Expired bookings deleted', `Deleted ${ids.length} expired booking slot(s).`, {
+    bookingIds: ids,
+    bookings: expiredBookings.map(booking => ({
+      bookingId: booking.id,
+      reference_code: booking.reference_code,
+      customer_name: booking.customer_name,
+      booking_date: booking.booking_date,
+      booking_time: booking.booking_time || booking.time_slot,
+      court: booking.court || booking.court_name,
+      amount: booking.price || booking.rate
+    }))
+  });
+  showToast('Expired bookings deleted');
+  await loadBookings();
+  renderExpiredBookings();
+}
+
 function closeCalendarModal() {
   document.getElementById('calendarModal').classList.remove('open');
 }
