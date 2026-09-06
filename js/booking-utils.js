@@ -5,8 +5,13 @@ function isWeekend(dateValue) {
   return day === 0 || day === 5 || day === 6;
 }
 
-function getBookingRateForDate(dateValue) {
-  return isWeekend(dateValue) ? 550 : 500;
+function getBookingRateForDate(dateValue, timeSlot = '') {
+  const date = new Date(dateValue);
+  const startTime = String(timeSlot || '').split('-')[0].trim().toUpperCase();
+  const timeMatch = startTime.match(/^(\d{1,2})(?::\d{2})?\s*(AM|PM)?$/);
+  const startHour = timeMatch ? Number(timeMatch[1]) % 12 + (timeMatch[2] === 'PM' ? 12 : 0) : null;
+  const isMondayEarlyMorning = !Number.isNaN(date.getTime()) && date.getDay() === 1 && startHour >= 1 && startHour < 5;
+  return isWeekend(dateValue) || isMondayEarlyMorning ? 550 : 500;
 }
 
 function normalizeBookingValue(value) {
