@@ -993,15 +993,15 @@ function openExtendBookingModal() {
   extendBookingGroups.forEach((group, index) => {
     const option = document.createElement('option');
     option.value = String(index);
-    option.textContent = `${group.customer_name} · ${group.reference_code} · ${group.dateSummary} · ${group.timeSummary}`;
+    option.textContent = `${group.customer_name} · ${group.reference_code}`;
     customerSelect.appendChild(option);
   });
 
   modal.classList.add('open');
-  updateExtendBookingFields();
+  updateExtendBookingFields(true);
 }
 
-async function updateExtendBookingFields() {
+async function updateExtendBookingFields(resetDate = false) {
   const customerSelect = document.getElementById('extendBookingCustomer');
   const dateInput = document.getElementById('extendBookingDate');
   const courtSelect = document.getElementById('extendBookingCourt');
@@ -1015,7 +1015,7 @@ async function updateExtendBookingFields() {
     .at(-1) || group.bookings[0];
   const nextSlot = getNextBookingSlot(source);
   const defaultDate = nextSlot?.date || source.booking_date || source.date || formatDateKey(new Date());
-  dateInput.value = dateInput.value || defaultDate;
+  if (resetDate || !dateInput.value) dateInput.value = defaultDate;
 
   const currentCourt = courtSelect.value;
   const courts = [...new Set(group.bookings.map(booking => booking.court || booking.court_name || 'Court One'))];
