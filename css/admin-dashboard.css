@@ -60,7 +60,27 @@ body.sidebar-open { overflow: hidden; }
 .sidebar-link { width: 100%; display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #a9b1bf; font: 600 0.84rem 'Inter', sans-serif; text-decoration: none; text-align: left; cursor: pointer; transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease; }
 .sidebar-link:hover, .sidebar-link.active { color: #fff; background: rgba(236, 72, 153, 0.13); border-color: rgba(236, 72, 153, 0.18); }
 .sidebar-link.active { box-shadow: inset 3px 0 0 var(--accent); }
-.sidebar-icon { width: 18px; color: var(--accent-soft); font-size: 1rem; text-align: center; }
+.sidebar-icon { width: 18px; color: var(--accent); font-size: 1rem; text-align: center; }
+.expired-booking-icon {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+.expired-booking-icon::before,
+.expired-booking-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 1.5px;
+  background: currentColor;
+  border-radius: 2px;
+  transform-origin: bottom center;
+}
+.expired-booking-icon::before { height: 5px; transform: translateX(-50%) rotate(0deg); }
+.expired-booking-icon::after { height: 4px; transform: translateX(-50%) rotate(120deg); }
 .sidebar-button { font-family: 'Inter', sans-serif; }
 .sidebar-footer { margin-top: auto; padding: 14px 10px 0; border-top: 1px solid rgba(255,255,255,0.08); }
 .sidebar-admin { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 0 14px; }
