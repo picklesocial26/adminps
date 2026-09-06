@@ -1209,6 +1209,27 @@ async function extendBookingTime(group, requestedSlot = null) {
     return;
   }
 
+  const { data: freshConflicts, error: freshConflictError } = await supabaseClient
+    .from('bookings')
+    .select('id, status, booking_date, court, court_name, time_slot, booking_time')
+    .eq('booking_date', nextSlot.date)
+    .in('status', ['pending', 'paid', 'confirmed', 'completed', 'unpaid'])
+    .or(`court.eq.${nextSlot.court},court_name.eq.${nextSlot.court}`);
+  if (freshConflictError) {
+    console.error('Failed to verify live booking availability:', freshConflictError);
+    showToast('Could not verify live slot availability');
+    return;
+  }
+
+  const liveSlotTaken = (freshConflicts || []).some(booking =>
+    String(booking.court || booking.court_name || '').trim().toLowerCase() === String(nextSlot.court).trim().toLowerCase() &&
+    getSlotStartMinutes(booking.time_slot || booking.booking_time) === getSlotStartMinutes(nextSlot.timeSlot)
+  );
+  if (liveSlotTaken) {
+    showToast('This slot was just booked. Refresh and choose another time.');
+    return;
+  }
+
   const confirmed = confirm(`Extend ${source.customer_name || 'this booking'} to ${nextSlot.timeSlot}?\n\nAdditional rate: ₱${getBookingRateForDate(nextSlot.date).toLocaleString()}`);
   if (!confirmed) return;
 
