@@ -137,15 +137,6 @@ nav {
   align-items: center;
 }
 
-.mobile-admin-row {
-  display: none;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 0 20px;
-}
-
 /* Buttons */
 .btn-primary, .btn-secondary {
   font-family: 'Plus Jakarta Sans', sans-serif;
@@ -1619,14 +1610,6 @@ main {
     font-size: 1.5rem;
   }
 
-  .mobile-admin-row {
-    display: flex;
-  }
-
-  .mobile-admin-row .mobile-logout {
-    display: inline-flex;
-  }
-
   .dashboard-actions {
     width: 100%;
     flex-direction: column;
@@ -1802,10 +1785,6 @@ main {
   .btn-secondary {
     padding: 10px 14px;
     font-size: 0.85rem;
-  }
-
-  .mobile-admin-row {
-    padding: 0 12px;
   }
 
   .bookings-table {
@@ -1995,15 +1974,6 @@ main {
 
   .container {
     gap: 26px;
-  }
-
-  .mobile-admin-row {
-    justify-content: flex-end;
-    padding: 0;
-  }
-
-  .mobile-admin-row .mobile-logout {
-    min-height: 40px;
   }
 
   .dashboard-header {
