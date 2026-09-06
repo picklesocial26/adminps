@@ -400,17 +400,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   }
 
-  // Day rate: 6AM-6PM (slots starting 6AM through 5PM)
-  // Night rate: 6PM-6AM (slots starting 6PM through 5AM)
-  function getRate(slot) {
+  // Monday-Thursday: ₱500. Friday-Sunday: ₱550.
+  function getRate(slot, dateValue) {
     if (TEST_MODE_FORCE_ONE_PHP) {
       return 1;
     }
-    const daySlots = [
-      '6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM',
-      '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'
-    ];
-    return daySlots.some(t => slot.startsWith(t)) ? 450 : 500;
+    const day = new Date(`${dateValue}T00:00:00`).getDay();
+    return day === 0 || day === 5 || day === 6 ? 550 : 500;
   }
 
   // Helper function to check if a slot is in the past
@@ -565,7 +561,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function updateCart() {
     const count = selectedSlots.size;
     const total = [...selectedSlots].reduce((sum, key) => {
-      return sum + getRate(key.split('|')[1]);
+      return sum + getRate(key.split('|')[1], key.split('|')[0]);
     }, 0);
 
     document.getElementById('cartCount').textContent = `${count} slot${count !== 1 ? 's' : ''} selected`;
@@ -618,7 +614,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const slot = parts[1];
       const courtIndex = parseInt(parts[2], 10);
       const court = COURTS[courtIndex] || 'Court';
-      const price = getRate(slot);
+      const price = getRate(slot, date);
       total += price;
 
       const card = document.createElement('div');
@@ -1002,8 +998,8 @@ Phone: ${firstBooking.phone_number || ''}
           time_slot: slot,
           court_name: COURTS[parseInt(courtIndex)],
           court: COURTS[parseInt(courtIndex)],
-          price: getRate(slot),
-          rate: getRate(slot),
+          price: getRate(slot, date),
+          rate: getRate(slot, date),
           status: 'pending',
           fromExistingBooking: false,
           persistedInDb: false
