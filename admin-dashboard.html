@@ -25,21 +25,54 @@
   <button type="button" class="pending-alert-action" onclick="scrollToPendingBookings(event)">View Now</button>
 </div>
 <div class="app">
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+<aside class="sidebar" id="adminSidebar" aria-label="Admin navigation">
+  <div class="sidebar-header">
+    <div class="sidebar-mark">PS</div>
+    <div>
+      <strong>Pickle Social</strong>
+      <span>Operations hub</span>
+    </div>
+    <button class="sidebar-close" type="button" onclick="closeSidebar()" aria-label="Close navigation">&times;</button>
+  </div>
+  <div class="sidebar-section-label">Workspace</div>
+  <div class="sidebar-nav">
+    <a class="sidebar-link active" href="#top" onclick="closeSidebar()"><span class="sidebar-icon">⌂</span>Overview</a>
+    <a class="sidebar-link" href="#bookings" onclick="closeSidebar()"><span class="sidebar-icon">▣</span>Bookings</a>
+    <a class="sidebar-link" href="Booking%20Calendar.html"><span class="sidebar-icon">□</span>Booking Calendar</a>
+    <a class="sidebar-link" href="countr-pos.html?view=pos" target="_blank" rel="noopener noreferrer"><span class="sidebar-icon">₱</span>Point of Sale</a>
+  </div>
+  <div class="sidebar-section-label">Tools</div>
+  <div class="sidebar-nav">
+    <a class="sidebar-link" href="Logs.html"><span class="sidebar-icon">≡</span>Activity Logs</a>
+    <button class="sidebar-link sidebar-button" type="button" onclick="openBlockTimesModal(); closeSidebar()"><span class="sidebar-icon">◷</span>Block Timeslots</button>
+    <button class="sidebar-link sidebar-button" type="button" onclick="openExtendBookingModal(); closeSidebar()"><span class="sidebar-icon">＋</span>Extend Booking Time</button>
+  </div>
+  <div class="sidebar-footer">
+    <div class="sidebar-admin" id="sidebarAdminProfile">
+      <div class="sidebar-admin-avatar" id="sidebarAdminAvatar">A</div>
+      <div class="sidebar-admin-copy">
+        <span>Signed in as</span>
+        <strong id="sidebarAdminName">Loading account...</strong>
+      </div>
+    </div>
+    <div class="sidebar-status"><span></span>System connected</div>
+    <button class="sidebar-logout" type="button" onclick="logout()">Sign out <span>→</span></button>
+  </div>
+</aside>
 <nav>
+  <button class="menu-toggle" type="button" onclick="toggleSidebar()" aria-label="Open navigation" aria-controls="adminSidebar" aria-expanded="false">
+    <span></span><span></span><span></span>
+  </button>
   <div class="nav-brand">
     <a href="https://picklesocialcebu.site" target="_blank" title="Visit Pickle Social">
       <img src="logo.jpeg" alt="Pickle Social logo" class="nav-logo">
     </a>
     Pickle Social <span>Admin Dashboard</span>
-    <div class="admin-profile-pill mobile-pill" id="adminProfilePillMobile">Loading account...</div>
-  </div>
-  <div class="nav-actions">
-    <div class="admin-profile-pill nav-pill" id="adminProfilePill">Loading account...</div>
-    <button class="btn-secondary nav-logout" onclick="logout()">Logout</button>
   </div>
 </nav>
 
-<main>
+<main id="top">
   <div class="container">
     <div class="mobile-admin-row">
       <button class="btn-secondary mobile-logout" onclick="logout()">Logout</button>
@@ -54,10 +87,6 @@
         <input type="text" id="searchInput" class="filter-input" placeholder="Search reference, name, phone" oninput="applyFilters()">
         <input type="date" id="filterFrom" class="filter-input" onchange="applyFilters()">
         <div class="dashboard-actions">
-            <a class="btn-secondary" href="Logs.html">Logs</a>
-            <button class="btn-secondary" type="button" onclick="openBlockTimesModal()">Block timeslots</button>
-          <a class="btn-secondary" href="Booking%20Calendar.html">Booking Calendar</a>
-          <a class="btn-secondary" href="countr-pos.html?view=pos" target="_blank" rel="noopener noreferrer">POS</a>
           <button class="btn-primary refresh-button" onclick="refreshData()">Refresh</button>
         </div>
       </div>
@@ -102,7 +131,7 @@
     </div>
 
     <!-- Bookings Table -->
-    <div class="bookings-section">
+    <div class="bookings-section" id="bookings">
       <div class="bookings-toolbar">
         <div>
           <h2>Bookings</h2>
@@ -248,8 +277,8 @@
       </div>
       <div class="form-group">
         <label>Rate</label>
-        <div class="rate-display" id="addBookingRateValue">₱400</div>
-        <div class="rate-hint">Same rate: Weekdays ₱400 · Weekends ₱450</div>
+        <div class="rate-display" id="addBookingRateValue">₱500</div>
+        <div class="rate-hint">Monday–Thursday ₱500 · Friday–Sunday ₱550</div>
       </div>
       <div class="form-group">
         <label>Notes</label>
@@ -512,6 +541,46 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeBlockTimesModal()">Cancel</button>
       <button class="btn-primary" onclick="saveBlockedTimes()">Save blocked times</button>
+    </div>
+  </div>
+</div>
+
+<!-- Extend Booking Time Modal -->
+<div class="modal" id="extendBookingModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Extend booking time</h3>
+      <button class="modal-close" onclick="closeExtendBookingModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="extendBookingCustomer">Customer / player</label>
+        <select id="extendBookingCustomer" onchange="updateExtendBookingFields()"></select>
+      </div>
+      <div class="form-group">
+        <label for="extendBookingDate">Date</label>
+        <input type="date" id="extendBookingDate" onchange="updateExtendBookingFields()">
+      </div>
+      <div class="form-group">
+        <label for="extendBookingCourt">Court</label>
+        <select id="extendBookingCourt" onchange="updateExtendBookingFields()"></select>
+      </div>
+      <div class="form-group">
+        <label for="extendBookingTime">Add time slot</label>
+        <select id="extendBookingTime"></select>
+        <div class="slot-status-legend" aria-label="Time slot status legend">
+          <span><i class="legend-dot available"></i>Available</span>
+          <span><i class="legend-dot booked"></i>Booked</span>
+          <span><i class="legend-dot already-added"></i>Already added</span>
+          <span><i class="legend-dot pending"></i>Pending</span>
+          <span><i class="legend-dot blocked"></i>Blocked</span>
+        </div>
+        <div class="rate-hint">The selected hour will be added to this booking.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeExtendBookingModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitExtendBooking()">Add time</button>
     </div>
   </div>
 </div>
