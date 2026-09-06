@@ -21,6 +21,28 @@ const pendingNotificationState = {
 let pendingAlertAudioContext = null;
 let leaderboardMode = 'monthly';
 
+function toggleSidebar() {
+  const sidebar = document.getElementById('adminSidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const toggle = document.querySelector('.menu-toggle');
+  if (!sidebar || !overlay) return;
+  const isOpen = sidebar.classList.toggle('open');
+  overlay.classList.toggle('visible', isOpen);
+  document.body.classList.toggle('sidebar-open', isOpen);
+  if (toggle) toggle.setAttribute('aria-expanded', String(isOpen));
+}
+
+function closeSidebar() {
+  const sidebar = document.getElementById('adminSidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const toggle = document.querySelector('.menu-toggle');
+  if (!sidebar || !overlay) return;
+  sidebar.classList.remove('open');
+  overlay.classList.remove('visible');
+  document.body.classList.remove('sidebar-open');
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
 function getCurrentAdmin() {
   try {
     const profile = sessionStorage.getItem('adminProfile') || localStorage.getItem('adminProfile');
@@ -32,12 +54,12 @@ function getCurrentAdmin() {
 }
 
 function updateAdminProfileBadge() {
-  const badge = document.getElementById('adminProfilePill');
-  const mobileBadge = document.getElementById('adminProfilePillMobile');
+  const sidebarName = document.getElementById('sidebarAdminName');
+  const sidebarAvatar = document.getElementById('sidebarAdminAvatar');
   const currentAdmin = getCurrentAdmin();
-  const text = currentAdmin ? `Connected: ${currentAdmin.name}` : 'Connected: Unknown';
-  if (badge) badge.textContent = text;
-  if (mobileBadge) mobileBadge.textContent = text;
+  const adminName = currentAdmin?.name || 'Unknown Admin';
+  if (sidebarName) sidebarName.textContent = adminName;
+  if (sidebarAvatar) sidebarAvatar.textContent = adminName.charAt(0).toUpperCase();
 }
 
 function getAdminLogs() {
@@ -566,7 +588,6 @@ async function loadBookings() {
     allBookings = bookingsData;
     selectedBookingIds.clear();
     trackPendingBookingNotifications(bookingsData);
-    console.log('Loaded bookings:', allBookings);
 
     applyFilters();
     refreshCalendarView();
@@ -905,6 +926,275 @@ function renderTable() {
   });
 
   updateBulkActions();
+}
+
+function getNextBookingSlot(booking) {
+  const date = booking.booking_date || booking.date;
+  const time = booking.time_slot || booking.booking_time;
+  const startMinutes = getSlotStartMinutes(time);
+  if (!date || !Number.isFinite(startMinutes) || startMinutes >= 24 * 60) return null;
+
+  const nextStartMinutes = startMinutes + 60;
+  const nextEndMinutes = nextStartMinutes + 60;
+  const formatTime = minutes => {
+    const normalizedMinutes = minutes % (24 * 60);
+    const hours = Math.floor(normalizedMinutes / 60);
+    const minute = String(normalizedMinutes % 60).padStart(2, '0');
+    const suffix = hours < 12 ? 'AM' : 'PM';
+    const displayHour = hours % 12 || 12;
+    return minute === '00' ? `${displayHour}${suffix}` : `${displayHour}:${minute}${suffix}`;
+  };
+
+  const nextDate = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(nextDate.getTime())) return null;
+  if (nextStartMinutes >= 24 * 60) nextDate.setDate(nextDate.getDate() + 1);
+
+  return {
+    date: formatDateKey(nextDate),
+    court: booking.court || booking.court_name || 'Court One',
+    timeSlot: `${formatTime(nextStartMinutes)} - ${formatTime(nextEndMinutes)}`
+  };
+}
+
+let extendBookingGroups = [];
+
+function openExtendBookingModal() {
+  const modal = document.getElementById('extendBookingModal');
+  const customerSelect = document.getElementById('extendBookingCustomer');
+  if (!modal || !customerSelect) return;
+
+  const todayKey = formatDateKey(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = formatDateKey(yesterday);
+  extendBookingGroups = groupBookings(allBookings).filter(group => {
+    const activeBookings = group.bookings.filter(booking =>
+      !['cancelled', 'expired'].includes(String(booking.status || '').toLowerCase())
+    );
+    if (!activeBookings.length) return false;
+
+    const latestBooking = [...activeBookings]
+      .sort((a, b) => getSlotStartMinutes(a.time_slot || a.booking_time) - getSlotStartMinutes(b.time_slot || b.booking_time))
+      .at(-1);
+    const nextSlot = getNextBookingSlot(latestBooking);
+    const hasYesterdayBooking = activeBookings.some(booking =>
+      (booking.booking_date || booking.date || '') === yesterdayKey
+    );
+    return (nextSlot && nextSlot.date >= todayKey) || hasYesterdayBooking;
+  });
+  customerSelect.innerHTML = '';
+
+  if (!extendBookingGroups.length) {
+    customerSelect.innerHTML = '<option value="">No active bookings found</option>';
+    modal.classList.add('open');
+    return;
+  }
+
+  extendBookingGroups.forEach((group, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = `${group.customer_name} · ${group.reference_code} · ${group.dateSummary} · ${group.timeSummary}`;
+    customerSelect.appendChild(option);
+  });
+
+  modal.classList.add('open');
+  updateExtendBookingFields();
+}
+
+async function updateExtendBookingFields() {
+  const customerSelect = document.getElementById('extendBookingCustomer');
+  const dateInput = document.getElementById('extendBookingDate');
+  const courtSelect = document.getElementById('extendBookingCourt');
+  const timeSelect = document.getElementById('extendBookingTime');
+  const group = extendBookingGroups[Number(customerSelect?.value)];
+  if (!group || !dateInput || !courtSelect || !timeSelect) return;
+
+  const source = [...group.bookings]
+    .filter(booking => !['cancelled', 'expired'].includes(String(booking.status || '').toLowerCase()))
+    .sort((a, b) => getSlotStartMinutes(a.time_slot || a.booking_time) - getSlotStartMinutes(b.time_slot || b.booking_time))
+    .at(-1) || group.bookings[0];
+  const nextSlot = getNextBookingSlot(source);
+  const defaultDate = nextSlot?.date || source.booking_date || source.date || formatDateKey(new Date());
+  dateInput.value = dateInput.value || defaultDate;
+
+  const currentCourt = courtSelect.value;
+  const courts = [...new Set(group.bookings.map(booking => booking.court || booking.court_name || 'Court One'))];
+  courtSelect.innerHTML = courts.map(court => `<option value="${court}">${court}</option>`).join('');
+  if (courts.includes(currentCourt)) {
+    courtSelect.value = currentCourt;
+  } else if (source.court || source.court_name) {
+    courtSelect.value = source.court || source.court_name;
+  }
+
+  const { data: blockedSlots, error: blockedError } = await supabaseClient
+    .from('blocked_time_slots')
+    .select('time_slot')
+    .eq('blocked_date', dateInput.value)
+    .eq('court', courtSelect.value);
+  if (blockedError) {
+    console.error('Failed to load extension slot statuses:', blockedError);
+  }
+
+  const blockedTimes = new Set((blockedSlots || []).map(slot => getSlotStartMinutes(slot.time_slot)));
+  const groupIds = new Set(group.bookings.map(booking => booking.id));
+  const selectedDate = dateInput.value;
+  const selectedCourt = courtSelect.value;
+  const normalizedCourt = String(selectedCourt).trim().toLowerCase();
+  timeSelect.innerHTML = '';
+  for (let hour = 0; hour < 24; hour++) {
+    const option = document.createElement('option');
+    const formatTime = minutes => {
+      const normalizedMinutes = minutes % (24 * 60);
+      const hours = Math.floor(normalizedMinutes / 60);
+      const minute = String(normalizedMinutes % 60).padStart(2, '0');
+      const suffix = hours < 12 ? 'AM' : 'PM';
+      const displayHour = hours % 12 || 12;
+      return minute === '00' ? `${displayHour}${suffix}` : `${displayHour}:${minute}${suffix}`;
+    };
+    const timeSlot = `${formatTime(hour * 60)} - ${formatTime((hour + 1) * 60)}`;
+    const timeValue = getSlotStartMinutes(timeSlot);
+    const matchingBookings = allBookings.filter(booking => {
+      const status = String(booking.status || '').toLowerCase();
+      return !groupIds.has(booking.id) &&
+        !['cancelled', 'expired'].includes(status) &&
+        (booking.booking_date || booking.date) === selectedDate &&
+        String(booking.court || booking.court_name || 'Court One').trim().toLowerCase() === normalizedCourt &&
+        getSlotStartMinutes(booking.time_slot || booking.booking_time) === timeValue;
+    });
+    const alreadyAdded = group.bookings.some(booking =>
+      (booking.booking_date || booking.date) === selectedDate &&
+      String(booking.court || booking.court_name || 'Court One').trim().toLowerCase() === normalizedCourt &&
+      getSlotStartMinutes(booking.time_slot || booking.booking_time) === timeValue
+    );
+    const status = blockedTimes.has(timeValue)
+      ? 'Blocked'
+      : alreadyAdded
+        ? 'Already added'
+        : matchingBookings.some(booking => String(booking.status || '').toLowerCase() === 'pending')
+          ? 'Pending'
+          : matchingBookings.length
+            ? 'Booked'
+            : 'Available';
+
+    option.value = timeSlot;
+    option.textContent = `${timeSlot} · ${status}`;
+    option.className = `slot-option slot-option-${status.toLowerCase().replace(/\s+/g, '-')}`;
+    option.disabled = status !== 'Available';
+    timeSelect.appendChild(option);
+  }
+  const defaultOption = nextSlot && [...timeSelect.options].find(option => option.value === nextSlot.timeSlot);
+  if (defaultOption && !defaultOption.disabled) {
+    timeSelect.value = nextSlot.timeSlot;
+  }
+}
+
+function closeExtendBookingModal() {
+  document.getElementById('extendBookingModal')?.classList.remove('open');
+}
+
+async function submitExtendBooking() {
+  const customerSelect = document.getElementById('extendBookingCustomer');
+  const dateInput = document.getElementById('extendBookingDate');
+  const courtSelect = document.getElementById('extendBookingCourt');
+  const timeSelect = document.getElementById('extendBookingTime');
+  const group = extendBookingGroups[Number(customerSelect?.value)];
+  if (!group || !dateInput?.value || !courtSelect?.value || !timeSelect?.value) {
+    showToast('Select a customer, date, court, and time');
+    return;
+  }
+  if (timeSelect.selectedOptions[0]?.disabled) {
+    showToast('Select an available time slot');
+    return;
+  }
+
+  await extendBookingTime(group, {
+    date: dateInput.value,
+    court: courtSelect.value,
+    timeSlot: timeSelect.value
+  });
+}
+
+async function extendBookingTime(group, requestedSlot = null) {
+  if (!supabaseClient || !group?.bookings?.length) {
+    showToast('Database connection unavailable');
+    return;
+  }
+
+  const source = [...group.bookings]
+    .sort((a, b) => getSlotStartMinutes(a.time_slot || a.booking_time) - getSlotStartMinutes(b.time_slot || b.booking_time))
+    .at(-1);
+  const nextSlot = requestedSlot || getNextBookingSlot(source);
+  if (!nextSlot) {
+    showToast('This booking cannot be extended past 11:00 PM');
+    return;
+  }
+
+  const alreadyInGroup = group.bookings.some(booking =>
+    (booking.booking_date || booking.date) === nextSlot.date &&
+    (booking.court || booking.court_name || 'Court One') === nextSlot.court &&
+    getSlotStartMinutes(booking.time_slot || booking.booking_time) === getSlotStartMinutes(nextSlot.timeSlot)
+  );
+  if (alreadyInGroup) {
+    showToast('This booking already includes the next hour');
+    return;
+  }
+
+  const occupied = allBookings.some(booking => {
+    const status = String(booking.status || '').toLowerCase();
+    return booking.id !== source.id &&
+      !['cancelled', 'expired'].includes(status) &&
+      (booking.booking_date || booking.date) === nextSlot.date &&
+      String(booking.court || booking.court_name || 'Court One').trim().toLowerCase() === String(nextSlot.court).trim().toLowerCase() &&
+      getSlotStartMinutes(booking.time_slot || booking.booking_time) === getSlotStartMinutes(nextSlot.timeSlot);
+  });
+  if (occupied) {
+    showToast('The next hour is already booked');
+    return;
+  }
+
+  const { data: blockedSlots, error: blockedError } = await supabaseClient
+    .from('blocked_time_slots')
+    .select('court, time_slot')
+    .eq('blocked_date', nextSlot.date)
+    .eq('court', nextSlot.court);
+  if (blockedError) {
+    console.error('Failed to check blocked times:', blockedError);
+    showToast('Could not check the next timeslot');
+    return;
+  }
+  if ((blockedSlots || []).some(slot => getSlotStartMinutes(slot.time_slot) === getSlotStartMinutes(nextSlot.timeSlot))) {
+    showToast('The next hour is blocked');
+    return;
+  }
+
+  const confirmed = confirm(`Extend ${source.customer_name || 'this booking'} to ${nextSlot.timeSlot}?\n\nAdditional rate: ₱${getBookingRateForDate(nextSlot.date).toLocaleString()}`);
+  if (!confirmed) return;
+
+  const payload = { ...source };
+  delete payload.id;
+  payload.booking_date = nextSlot.date;
+  payload.time_slot = nextSlot.timeSlot;
+  payload.booking_time = nextSlot.timeSlot;
+  payload.price = getBookingRateForDate(nextSlot.date);
+  payload.rate = payload.price;
+  payload.created_at = new Date().toISOString();
+
+  try {
+    const { error } = await supabaseClient.from('bookings').insert([payload]);
+    if (error) throw error;
+
+    await addAdminLog(
+      'booking_extended',
+      'Booking time extended',
+      `Added ${nextSlot.timeSlot} for ${source.customer_name || 'booking'} at ${nextSlot.court}.`,
+      { reference_code: source.reference_code, customer_name: source.customer_name, booking_date: nextSlot.date, booking_time: nextSlot.timeSlot }
+    );
+    showToast('Booking extended by 1 hour');
+    await loadBookings();
+  } catch (error) {
+    console.error('Failed to extend booking:', error);
+    showToast('Failed to extend booking');
+  }
 }
 
 function toggleGroupSelection(group) {
@@ -1289,12 +1579,16 @@ function getBookingTimeValue(timeValue) {
   return hours * 60 + minutes;
 }
 
+function getSlotStartMinutes(timeValue) {
+  return getBookingTimeValue(String(timeValue || '').split('-')[0].trim());
+}
+
 function getBookingsForDate(dateKey) {
   return allBookings
     .filter(booking => (booking.booking_date || booking.date || '').toString() === dateKey)
     .sort((a, b) => {
-      const timeA = getBookingTimeValue(a.time_slot || a.booking_time || '');
-      const timeB = getBookingTimeValue(b.time_slot || b.booking_time || '');
+      const timeA = getSlotStartMinutes(a.time_slot || a.booking_time || '');
+      const timeB = getSlotStartMinutes(b.time_slot || b.booking_time || '');
       return timeA - timeB;
     });
 }
@@ -1678,8 +1972,6 @@ function updateEarnings() {
 
   document.getElementById('pendingAmount').textContent = '₱' + pendingAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('pendingCount').textContent = `${pendingBookings.length} booking${pendingBookings.length !== 1 ? 's' : ''}`;
-
-  console.log('Earnings updated:', { todayEarnings, weeklyEarnings, monthlyEarnings, pendingAmount, pendingCount: pendingBookings.length, selectedDate: formatDateKey(selectedDate), weekStart: formatDateKey(weekStart), weekEnd: formatDateKey(weekEnd), monthStart: formatDateKey(monthStart), monthEnd: formatDateKey(monthEnd) });
 }
 
 const earningsModalPassword = 'picklesocial26';
