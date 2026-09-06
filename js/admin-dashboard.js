@@ -1086,6 +1086,25 @@ async function updateExtendBookingFields(resetDate = false) {
   if (defaultOption && !defaultOption.disabled) {
     timeSelect.value = nextSlot.timeSlot;
   }
+  updateExtendSelectedSlotStatus();
+}
+
+function updateExtendSelectedSlotStatus() {
+  const timeSelect = document.getElementById('extendBookingTime');
+  const statusDisplay = document.getElementById('extendSelectedSlotStatus');
+  if (!timeSelect || !statusDisplay) return;
+
+  const selectedOption = timeSelect.selectedOptions[0];
+  if (!selectedOption) {
+    statusDisplay.textContent = '';
+    statusDisplay.className = 'selected-slot-status';
+    return;
+  }
+
+  const statusMatch = selectedOption.textContent.match(/·\s*(Available|Booked|Pending|Blocked|Already added)$/);
+  const status = statusMatch ? statusMatch[1] : 'Available';
+  statusDisplay.textContent = `${selectedOption.value} · ${status}`;
+  statusDisplay.className = `selected-slot-status ${status.toLowerCase().replace(/\s+/g, '-')}`;
 }
 
 function closeExtendBookingModal() {
