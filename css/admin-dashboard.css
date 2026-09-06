@@ -1940,6 +1940,11 @@ main {
 }
 
 @media (max-width: 600px) {
+  .slot-status-legend {
+    gap: 5px 9px;
+    font-size: 0.68rem;
+  }
+
   nav {
     min-height: 64px;
     height: auto;
