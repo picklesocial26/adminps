@@ -1733,11 +1733,8 @@ function getBookingInitials(name) {
 function renderScheduleModal() {
   const grid = document.getElementById('scheduleGrid');
   const dateInput = document.getElementById('scheduleDateInput');
-  const detailTitle = document.getElementById('scheduleDayDetailTitle');
-  const detailSummary = document.getElementById('scheduleDayDetailSummary');
-  const detailList = document.getElementById('scheduleDayDetailList');
 
-  if (!grid || !dateInput || !detailTitle || !detailSummary || !detailList) return;
+  if (!grid || !dateInput) return;
 
   const activeDate = selectedCalendarDate ? new Date(selectedCalendarDate) : new Date();
   if (isNaN(activeDate.getTime())) {
@@ -1804,6 +1801,7 @@ function renderScheduleModal() {
         slotCell.innerHTML = `
           <div class="slot-initials">${initials}</div>
           <div class="slot-title">${slotBookings[0].customer_name || 'Booked'}</div>
+          ${slotBookings[0].reference_code ? `<div class="slot-reference">${slotBookings[0].reference_code}</div>` : ''}
           <div class="slot-subtitle">${slotBookings.length > 1 ? `${slotBookings.length} bookings` : (slotBookings[0].time_slot || slotBookings[0].booking_time || 'Booked')}</div>
         `;
       }
@@ -1817,30 +1815,6 @@ function renderScheduleModal() {
     grid.appendChild(row);
   }
 
-  detailTitle.textContent = new Date(selectedCalendarDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  detailSummary.textContent = bookings.length === 0 ? 'No bookings' : `${bookings.length} booking${bookings.length === 1 ? '' : 's'}`;
-  detailList.innerHTML = '';
-
-  if (bookings.length === 0) {
-    detailList.innerHTML = '<div class="empty-list">No bookings found for this day.</div>';
-  } else {
-    bookings.forEach(booking => {
-      const item = document.createElement('div');
-      item.className = 'calendar-detail-item';
-      const info = document.createElement('div');
-      info.innerHTML = `
-        <strong>${booking.customer_name || 'Unknown'}</strong>
-        <div class="calendar-detail-meta">${booking.court || booking.court_name || 'Court'} · ${booking.time_slot || booking.booking_time || 'TBD'}</div>
-        <div class="calendar-detail-meta">Ref: ${booking.reference_code || 'N/A'} · ₱${(booking.price || booking.rate || 0).toLocaleString()}</div>
-      `;
-      const badge = document.createElement('span');
-      badge.className = `status-badge ${booking.status || 'pending'}`;
-      badge.textContent = booking.status || 'pending';
-      item.appendChild(info);
-      item.appendChild(badge);
-      detailList.appendChild(item);
-    });
-  }
 }
 
 async function loadBlockedTimesForSchedule() {
@@ -1868,9 +1842,12 @@ function formatScheduleHour(hour) {
 
 function openCalendarModal(date = new Date()) {
   selectedCalendarDate = formatDateKey(date);
-  document.getElementById('calendarModal').classList.add('open');
+  const modal = document.getElementById('calendarModal');
+  modal.classList.add('open');
+  document.body.classList.add('modal-open');
   renderScheduleModal();
   loadBlockedTimesForSchedule();
+  document.getElementById('scheduleDateInput')?.focus();
 }
 
 function getBlockTimeOptions() {
@@ -2089,6 +2066,7 @@ async function deleteAllExpiredBookings() {
 
 function closeCalendarModal() {
   document.getElementById('calendarModal').classList.remove('open');
+  document.body.classList.remove('modal-open');
 }
 
 function changeScheduleDay(step) {
