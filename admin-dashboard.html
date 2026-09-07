@@ -39,7 +39,7 @@
   <div class="sidebar-nav">
     <a class="sidebar-link active" href="#top" onclick="closeSidebar()"><span class="sidebar-icon">⌂</span>Overview</a>
     <a class="sidebar-link" href="#bookings" onclick="closeSidebar()"><span class="sidebar-icon">▣</span>Bookings</a>
-    <a class="sidebar-link" href="Booking%20Calendar.html"><span class="sidebar-icon calendar-sidebar-icon" aria-hidden="true"></span>Booking Calendar</a>
+    <button class="sidebar-link sidebar-button" type="button" onclick="openCalendarModal(); closeSidebar()"><span class="sidebar-icon calendar-sidebar-icon" aria-hidden="true"></span>Booking Calendar</button>
     <a class="sidebar-link" href="countr-pos.html?view=pos" target="_blank" rel="noopener noreferrer"><span class="sidebar-icon">₱</span>Point of Sale</a>
   </div>
   <div class="sidebar-section-label">Tools</div>
@@ -487,11 +487,14 @@
 </div>
 
 <!-- Booking Schedule Modal -->
-<div class="modal" id="calendarModal">
-  <div class="modal-content calendar-modal-content">
+<div class="modal" id="calendarModal" role="dialog" aria-modal="true" aria-labelledby="calendarModalTitle" onclick="if (event.target === this) closeCalendarModal()">
+  <div class="modal-content calendar-modal-content" onclick="event.stopPropagation()">
     <div class="modal-header">
-      <h3>Booking Schedule</h3>
-      <button class="modal-close" onclick="closeCalendarModal()">×</button>
+      <div>
+        <span class="calendar-modal-eyebrow">Operations / Availability</span>
+        <h3 id="calendarModalTitle">Booking Schedule</h3>
+      </div>
+      <button class="modal-close" type="button" onclick="closeCalendarModal()" aria-label="Close booking schedule">×</button>
     </div>
     <div class="modal-body">
       <div class="calendar-toolbar">
@@ -507,12 +510,9 @@
         </div>
       </div>
       <div id="scheduleGrid" class="schedule-grid"></div>
-      <div class="calendar-detail-card">
-        <div class="calendar-detail-header">
-          <h4 id="scheduleDayDetailTitle">Selected day</h4>
-          <div id="scheduleDayDetailSummary" class="calendar-day-summary">0 bookings</div>
-        </div>
-        <div id="scheduleDayDetailList" class="modal-list"></div>
+      <div class="calendar-day-navigation" aria-label="Change calendar date">
+        <button class="btn-secondary" type="button" onclick="changeScheduleDay(-1)">← Previous date</button>
+        <button class="btn-secondary" type="button" onclick="changeScheduleDay(1)">Next date →</button>
       </div>
     </div>
     <div class="modal-footer">
