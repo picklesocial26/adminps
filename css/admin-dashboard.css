@@ -106,7 +106,7 @@ body.sidebar-open { overflow: hidden; }
   border-left: 2px solid currentColor;
   border-right: 2px solid currentColor;
 }
-.sidebar-button { font-family: 'Inter', sans-serif; }
+.sidebar-button { width: 100%; font-family: 'Inter', sans-serif; text-align: left; }
 .sidebar-footer { margin-top: auto; padding: 16px 10px 0; border-top: 1px solid rgba(255,255,255,0.08); }
 .sidebar-admin { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 0 14px; }
 .sidebar-admin-avatar { width: 32px; height: 32px; display: grid; place-items: center; flex-shrink: 0; border-radius: 50%; background: rgba(236,72,153,0.18); color: var(--accent-soft); font: 700 0.85rem 'Space Grotesk', sans-serif; }
@@ -831,6 +831,8 @@ main {
 }
 
 /* Modal */
+body.modal-open { overflow: hidden; }
+
 .modal {
   display: none;
   position: fixed;
@@ -1355,7 +1357,33 @@ main {
 
 /* Booking Schedule Modal */
 .calendar-modal-content {
-  max-width: 1120px;
+  max-width: 1180px;
+  background: #111722;
+  border-color: rgba(244, 114, 182, 0.3);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.calendar-modal-content .modal-header {
+  padding: 24px 28px 20px;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.13), rgba(17, 24, 39, 0.1) 58%);
+}
+
+.calendar-modal-content .modal-body {
+  padding: 24px 28px 28px;
+}
+
+.calendar-modal-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #f472b6;
+  font: 600 0.68rem 'IBM Plex Mono', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.calendar-modal-content .modal-header h3 {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
 }
 
 .calendar-toolbar {
@@ -1364,12 +1392,29 @@ main {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .calendar-toolbar-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.calendar-day-navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.calendar-day-navigation .btn-secondary {
+  min-width: 150px;
 }
 
 .block-times-modal-content {
@@ -1491,7 +1536,10 @@ main {
   display: grid;
   grid-template-columns: 120px repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 18px;
+  padding: 1px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .schedule-row {
@@ -1501,8 +1549,8 @@ main {
 .schedule-cell {
   min-height: 62px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  background: rgba(10, 14, 22, 0.72);
   color: var(--text-primary);
   padding: 10px 12px;
   display: flex;
@@ -1582,51 +1630,21 @@ main {
   font-weight: 700;
 }
 
+.slot-reference {
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.62);
+  font: 500 0.62rem 'IBM Plex Mono', monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .slot-subtitle {
   color: var(--gray-text);
   font-size: 0.82rem;
   margin-top: 4px;
 }
 
-.calendar-detail-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 16px;
-  margin-top: 16px;
-}
-
-.calendar-detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.calendar-day-summary {
-  color: var(--gray-text);
-  font-size: 0.9rem;
-}
-
-.calendar-detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.calendar-detail-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.calendar-detail-item strong {
-  color: var(--text-primary);
-  font-size: 0.95rem;
-}
 
 .calendar-detail-meta {
   color: var(--text-secondary);
@@ -1836,10 +1854,6 @@ main {
 
   .slot-subtitle {
     font-size: 0.78rem;
-  }
-
-  .calendar-detail-card {
-    padding: 14px;
   }
 
   main {
