@@ -35,6 +35,7 @@
     .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
     .badge.deleted { background: #fee2e2; color: var(--danger); }
     .badge.expired { background: #fef3c7; color: var(--warning); }
+    .badge.blocked { background: #dcfce7; color: #15803d; }
     .badge.default { background: #dbeafe; color: var(--accent); }
     .details-cell { color: var(--text); font-size: 0.95rem; line-height: 1.5; }
     .muted { color: var(--muted); font-size: 0.9rem; }
@@ -104,11 +105,11 @@
   <div class="modal-overlay" id="detailsModal">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title">Booking Details</div>
+        <div class="modal-title">Activity Details</div>
         <button class="modal-close" onclick="closeDetailsModal()" aria-label="Close">×</button>
       </div>
       <div class="modal-body" id="detailsModalBody">
-        <div class="empty">Select a log entry to view its booking details.</div>
+        <div class="empty">Select a log entry to view its activity details.</div>
       </div>
     </div>
   </div>
@@ -116,8 +117,8 @@
   <div class="page">
     <div class="topbar">
       <div>
-        <h1>Deleted / Expired Logs</h1>
-        <p>Automatic audit trail for deleted bookings and expired bookings.</p>
+        <h1>Activity Logs</h1>
+        <p>Audit trail for booking and blocked-time-slot changes.</p>
       </div>
       <a class="btn btn-secondary" href="admin-dashboard.html">Back to Dashboard</a>
     </div>
@@ -180,7 +181,7 @@
       const container = document.getElementById('logsContent');
 
       if (!logs.length) {
-        container.innerHTML = '<div class="empty">No logs yet. Deleted or expired booking events will appear here.</div>';
+        container.innerHTML = '<div class="empty">No activity logs yet.</div>';
         return;
       }
 
@@ -192,13 +193,13 @@
                 <th>Type</th>
                 <th>Date & Time</th>
                 <th>Action</th>
-                <th>Booking Summary</th>
+                <th>Activity Summary</th>
                 <th>Details</th>
               </tr>
             </thead>
             <tbody>
               ${logs.map(log => {
-                const badgeClass = log.type === 'deleted' ? 'deleted' : log.type === 'expired' ? 'expired' : 'default';
+                const badgeClass = log.type === 'deleted' ? 'deleted' : log.type === 'expired' ? 'expired' : log.type === 'blocked' ? 'blocked' : 'default';
                 const createdAtValue = log.created_at || log.createdAt;
                 const createdAt = createdAtValue ? new Date(createdAtValue).toLocaleString('en-US', {
                   month: 'long',
@@ -225,7 +226,7 @@
                   <tr>
                     <td><span class="badge ${badgeClass}">${log.type || 'info'}</span></td>
                     <td>${createdAt}</td>
-                    <td class="details-cell"><strong>${log.title || 'Admin action'}</strong><br><span class="muted">Performed by: ${actorName}</span><br><span class="muted">${log.details && log.details.startsWith('{') ? 'Grouped booking action' : (log.details || 'No details available.')}</span></td>
+                    <td class="details-cell"><strong>${log.title || 'Admin action'}</strong><br><span class="muted">Performed by: ${actorName}</span><br><span class="muted">${log.details && log.details.startsWith('{') ? 'Grouped activity action' : (log.details || 'No details available.')}</span></td>
                     <td class="details-cell">${summary}</td>
                     <td class="details-cell">
                       <button class="details-btn" onclick="openLogDetails('${log.id}', '${log.title || 'Admin action'}', '${createdAt}')">View Details</button>
@@ -320,12 +321,12 @@
             </div>
             ${sortedBookings.map(item => `
               <div class="detail-item">
-                <strong>${item.court || 'Court'}</strong>
+                <strong>${item.action ? item.action.charAt(0).toUpperCase() + item.action.slice(1) : (item.court || 'Court')}</strong>
                 <div class="muted">Date: ${item.booking_date || 'N/A'}</div>
                 <div class="muted">Time: ${item.booking_time || 'N/A'}</div>
                 <div class="muted">Name: ${item.name || item.customer_name || item.guest_name || 'N/A'}</div>
                 <div class="muted">Phone: ${item.phone || item.phone_number || item.mobile || item.customer_phone || item.customer_phone_number || 'N/A'}</div>
-                <div class="muted">Amount: ${item.amount ? '₱' + Number(item.amount).toLocaleString() : 'N/A'}</div>
+                <div class="muted">${item.amount ? 'Amount: ₱' + Number(item.amount).toLocaleString() : ''}</div>
               </div>
             `).join('')}
           `
