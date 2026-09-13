@@ -1920,6 +1920,20 @@ async function saveBlockedTimes() {
   if (!supabaseClient) return showToast('Database connection unavailable');
 
   const selected = options.map(input => ({ blocked_date: date, court: input.dataset.court, time_slot: formatScheduleHour(Number(input.value)) }));
+  const { data: existing, error: existingError } = await supabaseClient
+    .from('blocked_time_slots')
+    .select('court, time_slot')
+    .eq('blocked_date', date);
+  if (existingError) {
+    console.error('Failed to load existing blocked times:', existingError);
+    return showToast('Could not update blocked timeslots');
+  }
+
+  const slotKey = slot => `${slot.court}|${slot.time_slot}`;
+  const existingKeys = new Set((existing || []).map(slotKey));
+  const selectedKeys = new Set(selected.map(slotKey));
+  const addedSlots = selected.filter(slot => !existingKeys.has(slotKey(slot)));
+  const removedSlots = (existing || []).filter(slot => !selectedKeys.has(slotKey(slot)));
   const { error: deleteError } = await supabaseClient.from('blocked_time_slots').delete().eq('blocked_date', date);
   if (deleteError) {
     console.error('Failed to update blocked times:', deleteError);
@@ -1932,6 +1946,32 @@ async function saveBlockedTimes() {
       return showToast('Could not save blocked timeslots');
     }
   }
+
+  const changedSlots = [
+    ...addedSlots.map(slot => ({ ...slot, action: 'blocked' })),
+    ...removedSlots.map(slot => ({ blocked_date: date, ...slot, action: 'unblocked' }))
+  ];
+  if (changedSlots.length) {
+    const actionSummary = [
+      addedSlots.length ? `Blocked ${addedSlots.length} slot${addedSlots.length === 1 ? '' : 's'}` : '',
+      removedSlots.length ? `unblocked ${removedSlots.length} slot${removedSlots.length === 1 ? '' : 's'}` : ''
+    ].filter(Boolean).join('; ');
+    await addAdminLog(
+      'blocked',
+      'Blocked time slots updated',
+      `${actionSummary} for ${date}.`,
+      {
+        booking_date: date,
+        bookings: changedSlots.map(slot => ({
+          booking_date: date,
+          booking_time: slot.time_slot,
+          court: slot.court,
+          action: slot.action
+        }))
+      }
+    );
+  }
+
   blockedTimeSlots = selected;
   selectedCalendarDate = date;
   closeBlockTimesModal();
