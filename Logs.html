@@ -81,6 +81,10 @@
     .detail-item .muted { display: block; margin-top: 2px; }
     .table-scroll { width: 100%; overflow-x: auto; border-radius: 12px; }
     .table-scroll table { min-width: 720px; }
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 16px; }
+    .pagination button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: white; color: var(--text); cursor: pointer; }
+    .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pagination-status { color: var(--muted); font-size: 0.9rem; }
 
     @media (max-width: 900px) {
       .page { padding: 16px; }
@@ -134,7 +138,9 @@
   <script src="js/supabase-config.js"></script>
   <script>
     const storageKey = 'pickleAdminLogs';
+    const logsPerPage = 10;
     let supabaseClient = null;
+    let currentLogPage = 1;
 
     function getLocalLogs() {
       try {
@@ -185,6 +191,11 @@
         return;
       }
 
+      const totalPages = Math.ceil(logs.length / logsPerPage);
+      currentLogPage = Math.min(Math.max(currentLogPage, 1), totalPages);
+      const startIndex = (currentLogPage - 1) * logsPerPage;
+      const pageLogs = logs.slice(startIndex, startIndex + logsPerPage);
+
       container.innerHTML = `
         <div class="table-scroll">
           <table>
@@ -198,7 +209,7 @@
               </tr>
             </thead>
             <tbody>
-              ${logs.map(log => {
+              ${pageLogs.map(log => {
                 const badgeClass = log.type === 'deleted' ? 'deleted' : log.type === 'expired' ? 'expired' : log.type === 'blocked' ? 'blocked' : 'default';
                 const createdAtValue = log.created_at || log.createdAt;
                 const createdAt = createdAtValue ? new Date(createdAtValue).toLocaleString('en-US', {
@@ -237,7 +248,20 @@
             </tbody>
           </table>
         </div>
+        <div class="pagination" aria-label="Activity log pages">
+          <button type="button" onclick="changeLogPage(-1)" ${currentLogPage === 1 ? 'disabled' : ''}>Previous</button>
+          <span class="pagination-status">Page ${currentLogPage} of ${totalPages}</span>
+          <button type="button" onclick="changeLogPage(1)" ${currentLogPage === totalPages ? 'disabled' : ''}>Next</button>
+        </div>
       `;
+    }
+
+    function changeLogPage(step) {
+      const totalPages = Math.ceil((window.allLogs || []).length / logsPerPage);
+      const nextPage = currentLogPage + step;
+      if (nextPage < 1 || nextPage > totalPages) return;
+      currentLogPage = nextPage;
+      renderLogs(window.allLogs || []);
     }
 
     function getCurrentAdmin() {
@@ -351,6 +375,7 @@
       updateActiveAdminBadge();
       const logs = await getLogs();
       window.allLogs = logs;
+      currentLogPage = 1;
       renderLogs(logs);
     }
 
