@@ -1,3312 +1,2517 @@
-// admin-dashboard.js
-let supabaseClient = null;
-let allBookings = [];
-let filteredBookings = [];
-let groupedBookings = [];
-let currentPage = 1;
-const itemsPerPage = 20;
-let currentEditingBooking = null;
-let selectedBookingIds = new Set();
-let currentBookingDetailsGroup = null;
-let calendarViewDate = new Date();
-let selectedCalendarDate = null;
-let blockedTimeSlots = [];
-const adminLogsStorageKey = 'pickleAdminLogs';
-const pendingNotificationState = {
-  knownPendingIds: new Set(),
-  hasInitialized: false,
-  lastAlertAt: 0,
-  cooldownMs: 10000
-};
-let pendingAlertAudioContext = null;
-let leaderboardMode = 'monthly';
-
-function toggleSidebar() {
-  const sidebar = document.getElementById('adminSidebar');
-  const overlay = document.getElementById('sidebarOverlay');
-  const toggle = document.querySelector('.menu-toggle');
-  if (!sidebar || !overlay) return;
-  const isOpen = sidebar.classList.toggle('open');
-  overlay.classList.toggle('visible', isOpen);
-  document.body.classList.toggle('sidebar-open', isOpen);
-  if (toggle) toggle.setAttribute('aria-expanded', String(isOpen));
-}
-
-function closeSidebar() {
-  const sidebar = document.getElementById('adminSidebar');
-  const overlay = document.getElementById('sidebarOverlay');
-  const toggle = document.querySelector('.menu-toggle');
-  if (!sidebar || !overlay) return;
-  sidebar.classList.remove('open');
-  overlay.classList.remove('visible');
-  document.body.classList.remove('sidebar-open');
-  if (toggle) toggle.setAttribute('aria-expanded', 'false');
-}
-
-function getCurrentAdmin() {
-  try {
-    const profile = sessionStorage.getItem('adminProfile') || localStorage.getItem('adminProfile');
-    return profile ? JSON.parse(profile) : null;
-  } catch (err) {
-    console.error('Failed to read admin profile:', err);
-    return null;
-  }
-}
-
-function updateAdminProfileBadge() {
-  const sidebarName = document.getElementById('sidebarAdminName');
-  const sidebarAvatar = document.getElementById('sidebarAdminAvatar');
-  const currentAdmin = getCurrentAdmin();
-  const adminName = currentAdmin?.name || 'Unknown Admin';
-  if (sidebarName) sidebarName.textContent = adminName;
-  if (sidebarAvatar) sidebarAvatar.textContent = adminName.charAt(0).toUpperCase();
-}
-
-function getAdminLogs() {
-  try {
-    const saved = localStorage.getItem(adminLogsStorageKey);
-    return saved ? JSON.parse(saved) : [];
-  } catch (err) {
-    console.error('Failed to load admin logs:', err);
-    return [];
-  }
-}
-
-async function requestPendingNotificationPermission() {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-  if (Notification.permission === 'default') {
-    try {
-      await Notification.requestPermission();
-    } catch (err) {
-      console.warn('Notification permission request failed', err);
-    }
-  }
-}
-
-async function registerPendingBookingNotifications() {
-  if (typeof window === 'undefined') return;
-
-  if ('serviceWorker' in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.register('service-worker.js');
-      
-      if ('periodicSync' in registration) {
-        try {
-          await registration.periodicSync.register('check-pending-bookings', {
-            minInterval: 5 * 60 * 1000
-          });
-        } catch (err) {
-          if (err && err.name !== 'NotAllowedError') {
-            console.warn('Periodic sync registration failed', err);
-          }
-        }
-      }
-      
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.addEventListener('message', (event) => {
-          if (event.data && event.data.type === 'PENDING_BOOKING_CHECK') {
-            trackPendingBookingNotifications(event.data.bookings);
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('Service worker registration failed', err);
-    }
-  }
-
-  await requestPendingNotificationPermission();
-  
-  if ('wakeLock' in navigator && !document.hidden) {
-    try {
-      await navigator.wakeLock.request('screen');
-    } catch (err) {
-      if (err?.name !== 'NotAllowedError') {
-        console.warn('Wake lock request failed', err);
-      }
-    }
-  }
-}
-
-async function notifyPendingBookingOnDevice(title, body, count = 1) {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-
-  if (Notification.permission !== 'granted') {
-    const permission = await requestPendingNotificationPermission();
-    if (permission !== 'granted' && Notification.permission !== 'granted') return;
-  }
-
-  try {
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-      await registration.showNotification(title, {
-        body,
-        icon: 'logo.jpeg',
-        badge: 'logo.jpeg',
-        tag: 'pending-booking',
-        renotify: true,
-        requireInteraction: false
-      });
-
-      if (typeof navigator.setAppBadge === 'function') {
-        try {
-          await navigator.setAppBadge(count);
-        } catch (err) {
-          console.warn('App badge update failed', err);
-        }
-      }
-      return;
-    }
-
-    new Notification(title, { body, icon: 'logo.jpeg' });
-  } catch (err) {
-    console.warn('Unable to send device notification', err);
-  }
-}
-
-function playPendingBookingSound() {
-  try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    if (!pendingAlertAudioContext) {
-      pendingAlertAudioContext = new AudioContextClass();
-    }
-
-    const ctx = pendingAlertAudioContext;
-    if (ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
-    }
-
-    if (navigator.vibrate) {
-      navigator.vibrate([180, 90, 180]);
-    }
-
-    const now = ctx.currentTime;
-    const oscillator1 = ctx.createOscillator();
-    const oscillator2 = ctx.createOscillator();
-    const gain = ctx.createGain();
+:root {
+  --bg: #08090c;
+  --surface: #0f1319;
+  --surface-soft: #171c25;
+  --surface-border: #2a2f38;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --accent: #ec4899;
+  --accent-deep: #be185d;
+  --accent-soft: #f9a8d4;
+  --muted: #8b95a4;
+  --danger: #fb7185;
+  --gray-text: #94a3b8;
+  --body-bg: linear-gradient(180deg, #07080b 0%, #181d27 100%);
+  --border: #2a2f38;
+  --dark-border: #2a2f38;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --glow-pink: rgba(236,72,153,0.14);
+  --glow-mint: rgba(139,195,74,0.12);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: radial-gradient(circle at 12% 10%, var(--glow-pink) 0%, transparent 18%),
+              radial-gradient(circle at 88% 80%, var(--glow-mint) 0%, transparent 22%),
+              var(--body-bg);
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+body.sidebar-open { overflow: hidden; }
+.sidebar-overlay { display: none; }
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 252px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 14px 18px;
+  background: #10141b;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 18px 0 50px rgba(0, 0, 0, 0.18);
+}
+.sidebar-header { display: flex; align-items: center; gap: 11px; padding: 0 10px 24px; }
+.sidebar-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; background: var(--accent); color: white; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.82rem; }
+.sidebar-header strong, .sidebar-header span { display: block; }
+.sidebar-header strong { color: #fff; font-family: 'Space Grotesk', sans-serif; font-size: 0.92rem; }
+.sidebar-header span { color: var(--text-secondary); font-size: 0.72rem; margin-top: 3px; }
+.sidebar-close { display: none; }
+.sidebar-section-label { padding: 0 12px 10px; color: #667080; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.sidebar-nav { display: grid; gap: 5px; margin-bottom: 22px; }
+.sidebar-link { width: 100%; min-height: 40px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #a9b1bf; font: 600 0.84rem 'Inter', sans-serif; text-decoration: none; text-align: left; cursor: pointer; transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease; }
+.sidebar-link:hover, .sidebar-link.active { color: #fff; background: rgba(236, 72, 153, 0.13); border-color: rgba(236, 72, 153, 0.18); }
+.sidebar-link.active { box-shadow: inset 3px 0 0 var(--accent); }
+.sidebar-icon { width: 18px; color: var(--accent); font-size: 1rem; text-align: center; }
+.expired-booking-icon {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+.expired-booking-icon::before,
+.expired-booking-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 1.5px;
+  background: currentColor;
+  border-radius: 2px;
+  transform-origin: bottom center;
+}
+.expired-booking-icon::before { height: 5px; transform: translateX(-50%) rotate(0deg); }
+.expired-booking-icon::after { height: 4px; transform: translateX(-50%) rotate(120deg); }
+.calendar-sidebar-icon {
+  position: relative;
+  width: 16px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+.calendar-sidebar-icon::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 3px;
+  border-top: 2px solid currentColor;
+}
+.calendar-sidebar-icon::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 3px;
+  width: 6px;
+  height: 4px;
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+.sidebar-button { width: 100%; font-family: 'Inter', sans-serif; text-align: left; }
+.sidebar-footer { margin-top: auto; padding: 16px 10px 0; border-top: 1px solid rgba(255,255,255,0.08); }
+.sidebar-admin { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 0 14px; }
+.sidebar-admin-avatar { width: 32px; height: 32px; display: grid; place-items: center; flex-shrink: 0; border-radius: 50%; background: rgba(236,72,153,0.18); color: var(--accent-soft); font: 700 0.85rem 'Space Grotesk', sans-serif; }
+.sidebar-admin-copy { min-width: 0; }
+.sidebar-admin-copy span, .sidebar-admin-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-admin-copy span { color: #667080; font-size: 0.66rem; margin-bottom: 3px; }
+.sidebar-admin-copy strong { color: #f1f5f9; font-size: 0.78rem; }
+.sidebar-status { display: flex; align-items: center; gap: 8px; color: #8993a3; font-size: 0.72rem; margin-bottom: 14px; }
+.sidebar-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px rgba(16,185,129,0.12); }
+.sidebar-logout { display: flex; justify-content: space-between; width: 100%; padding: 0; border: 0; background: transparent; color: #a9b1bf; cursor: pointer; font: 600 0.82rem 'Inter', sans-serif; }
+.sidebar-logout:hover { color: #fff; }
+.menu-toggle { display: none; width: 38px; height: 38px; padding: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 9px; background: rgba(255,255,255,0.04); cursor: pointer; }
+.menu-toggle span { display: block; height: 2px; margin: 4px 0; background: #f9a8d4; border-radius: 2px; }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+}
+
+nav {
+  background: rgba(10, 15, 20, 0.95);
+  border-bottom: 1px solid rgba(236, 72, 153, 0.16);
+  padding: 0 2rem;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  flex-wrap: wrap;
+  margin-left: 252px;
+}
 
-    oscillator1.type = 'triangle';
-    oscillator1.frequency.setValueAtTime(1040, now);
-    oscillator1.frequency.exponentialRampToValueAtTime(1480, now + 0.14);
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.3px;
+}
+
+.nav-brand span {
+  color: var(--accent);
+}
+
+.nav-logo {
+  height: 28px;
+  border-radius: 6px;
+  margin-right: 8px;
+  transition: transform 140ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.nav-brand a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.nav-brand a:hover .nav-logo {
+  transform: scale(1.1);
+  filter: brightness(1.2);
+}
+
+.nav-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Buttons */
+.btn-primary, .btn-secondary {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-deep), var(--accent));
+  color: white;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(236, 72, 153, 0.25);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Main container */
+main {
+  max-width: 1400px;
+  margin: 0 auto 0 252px;
+  padding: 28px 20px 60px;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* Dashboard Header */
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.dashboard-header h1 {
+  font-size: 2rem;
+  color: var(--text-primary);
+}
+
+.header-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.refresh-button {
+  min-width: 140px;
+}
+
+.dashboard-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dashboard-actions a,
+.dashboard-actions button {
+  min-width: 140px;
+}
+
+@media (max-width: 1280px) {
+  .dashboard-actions {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .dashboard-actions a,
+  .dashboard-actions button {
+    min-width: 120px;
+  }
+}
+
+.leaderboard-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(14, 18, 24, 0.88);
+  border: 1px solid rgba(236, 72, 153, 0.18);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+}
+
+.leaderboard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.leaderboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.leaderboard-filter-group {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.leaderboard-filter-btn {
+  min-width: 88px;
+  justify-content: center;
+}
+
+.leaderboard-filter-btn.active {
+  background: linear-gradient(135deg, rgba(190, 24, 93, 0.95), rgba(236, 72, 153, 0.95));
+  border-color: rgba(236, 72, 153, 0.65);
+}
+
+.leaderboard-content {
+  display: block;
+}
+
+.leaderboard-section.collapsed .leaderboard-content {
+  display: none;
+}
+
+.leaderboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(236,72,153,0.12));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 140ms ease, box-shadow 180ms ease;
+}
+
+.leaderboard-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(236, 72, 153, 0.16);
+}
+
+.leaderboard-item.rank-1 {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.22), rgba(236, 72, 153, 0.14));
+}
+
+.leaderboard-item.rank-2 {
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.24), rgba(255, 255, 255, 0.06));
+}
+
+.leaderboard-item.rank-3 {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.22), rgba(255, 255, 255, 0.06));
+}
+
+.leaderboard-rank {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.leaderboard-body {
+  min-width: 0;
+}
+
+.leaderboard-name {
+  color: var(--text-primary);
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.leaderboard-count {
+  color: var(--accent-soft);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.leaderboard-empty {
+  color: var(--gray-text);
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.leaderboard-toggle-btn {
+  min-width: 150px;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  color: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.leaderboard-toggle-btn:hover {
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.5);
+}
+
+.toolbar-copy {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-top: 6px;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.row-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.bookings-table th:first-child,
+.bookings-table td:first-child {
+  text-align: center;
+}
+
+.modal-body textarea {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+  resize: vertical;
+}
+
+.filter-input {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-input:hover,
+.filter-input:focus {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(236, 72, 153, 0.25);
+  outline: none;
+}
+
+/* Earnings Section */
+.earnings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.earnings-section h2,
+.leaderboard-head h2 {
+  font-size: 1.3rem;
+  color: var(--text-primary);
+}
+
+.earnings-overview-action {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.earnings-overview-action .btn-primary {
+  padding: 14px 22px;
+  font-size: 1rem;
+  border-radius: 14px;
+}
+
+.earnings-overview-note {
+  color: var(--gray-text);
+  font-size: 0.95rem;
+}
+
+.earnings-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pending-summary-card {
+  background: rgba(236, 72, 153, 0.06);
+  border: 1px solid rgba(236, 72, 153, 0.2);
+}
+
+.earnings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.earnings-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+  transition: all 0.2s;
+}
+
+.earnings-card:hover {
+  border-color: rgba(236, 72, 153, 0.2);
+  box-shadow: 0 10px 30px rgba(236, 72, 153, 0.1);
+}
+
+.summary-card-today {
+  border: 1px solid rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.12);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.12);
+}
+
+.summary-card-weekly {
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.12);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.12);
+}
+
+.summary-card-monthly {
+  border: 1px solid rgba(234, 179, 8, 0.6);
+  background: rgba(234, 179, 8, 0.12);
+  box-shadow: 0 8px 24px rgba(234, 179, 8, 0.12);
+}
+
+.earnings-label {
+  color: var(--gray-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.earnings-amount {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--accent);
+  margin-bottom: 8px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.earnings-detail {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* Bookings Section */
+.bookings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bookings-section h2 {
+  font-size: 1.3rem;
+  color: var(--text-primary);
+}
+
+.table-wrapper {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 72, 153, 0.3) transparent;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(236, 72, 153, 0.3);
+  border-radius: 4px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(236, 72, 153, 0.5);
+}
+
+.bookings-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.bookings-table thead {
+  background: rgba(0, 0, 0, 0.3);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.bookings-table thead tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bookings-table th {
+  padding: 14px 16px;
+  text-align: left;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+}
+
+.bookings-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.1s;
+}
+
+.bookings-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.bookings-table td {
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.bookings-table .loading-cell {
+  text-align: center;
+  color: var(--gray-text);
+  padding: 40px 16px;
+}
+
+/* Status Badge */
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  text-transform: capitalize;
+}
+
+.status-badge.pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.status-badge.unpaid {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.18);
+}
+
+.status-badge.paid {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-badge.completed {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.status-badge.cancelled {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-badge.expired {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* Action Buttons in Table */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--accent);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 700;
+  min-width: 90px;
+  text-align: center;
+}
+
+.action-btn:hover {
+  background: rgba(236, 72, 153, 0.15);
+  border-color: rgba(236, 72, 153, 0.3);
+}
+
+.action-btn.delete-btn {
+  color: #ef4444;
+}
+
+.action-btn.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.delete-btn {
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.15) !important;
+}
+
+.action-btn.confirm-btn {
+  color: var(--success);
+}
+
+.action-btn.confirm-btn:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.confirm-btn {
+  color: var(--success) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+.confirm-btn:hover {
+  background: rgba(16, 185, 129, 0.15) !important;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+  flex-wrap: wrap;
+}
+
+.page-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.page-number-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  min-width: 40px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.page-number-btn:hover:not(:disabled) {
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.3);
+}
+
+.page-number-btn.active,
+.page-number-btn:disabled {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  cursor: default;
+}
+
+.page-break {
+  color: var(--gray-text);
+  font-size: 0.95rem;
+}
+
+#pageInfo {
+  display: none;
+}
+
+/* Modal */
+body.modal-open { overflow: hidden; }
+
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal.open {
+  display: flex;
+}
+
+.modal-content {
+  background: rgba(15, 19, 25, 0.95);
+  border: 1px solid rgba(236, 72, 153, 0.2);
+  border-radius: 14px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-header h3 {
+  font-size: 1.2rem;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  color: var(--gray-text);
+  cursor: pointer;
+  transition: color 0.15s;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: var(--accent);
+}
+
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.earnings-date-toggle .date-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.earnings-date-toggle .date-toggle-row input[type="date"] {
+  flex: 1;
+  min-width: 160px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.summary-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.summary-label {
+  color: var(--gray-text);
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.summary-value {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.modal-section h4 {
+  margin: 0 0 10px 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.list-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.list-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.list-item-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.empty-list {
+  color: var(--text-secondary);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+}
+
+.receipt-view-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 20px;
+}
+
+.receipt-image-card,
+.receipt-detail-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.receipt-image-label {
+  color: var(--gray-text);
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.receipt-image {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  object-fit: contain;
+  max-height: 340px;
+}
+
+.receipt-image-placeholder {
+  color: var(--text-secondary);
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 18px;
+  text-align: center;
+}
+
+.receipt-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.receipt-detail-row:last-child {
+  border-bottom: none;
+}
+
+.receipt-detail-row span {
+  color: var(--gray-text);
+  font-size: 0.86rem;
+}
+
+.receipt-detail-row strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  text-align: right;
+  word-break: break-word;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group select {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+}
+
+.form-group select option {
+  background: #f8fafc;
+  color: #111827;
+}
+
+.form-group select option.slot-option-available {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.form-group select option.slot-option-booked,
+.form-group select option.slot-option-blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.form-group select option.slot-option-already-added {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
+.form-group select option.slot-option-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.slot-value-source {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.customer-picker {
+  display: grid;
+  gap: 5px;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.customer-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font: 600 0.78rem 'Inter', sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.customer-picker-row:hover,
+.customer-picker-row.selected {
+  border-color: rgba(236, 72, 153, 0.55);
+  background: rgba(236, 72, 153, 0.14);
+}
+
+.customer-picker-name,
+.customer-picker-reference {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-picker-name { min-width: 0; }
+.customer-picker-reference { color: var(--accent-soft); font-size: 0.72rem; flex-shrink: 0; }
+
+.slot-picker {
+  display: grid;
+  gap: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.slot-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 22px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+  font: 600 0.78rem 'Inter', sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.slot-picker-row:hover:not(:disabled),
+.slot-picker-row.selected {
+  border-color: rgba(236, 72, 153, 0.55);
+  background: rgba(236, 72, 153, 0.14);
+}
+
+.slot-picker-row:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.slot-picker-row.available .slot-picker-status { color: #86efac; }
+.slot-picker-row.booked .slot-picker-status { color: #fca5a5; }
+.slot-picker-row.already-added .slot-picker-status { color: #f9a8d4; }
+.slot-picker-row.pending .slot-picker-status { color: #fcd34d; }
+.slot-picker-row.blocked .slot-picker-status { color: #f87171; }
+.slot-picker-check { color: var(--accent-soft); font-size: 1rem; text-align: center; }
+.slot-picker-row.selected .slot-picker-check { color: #fff; }
+
+.slot-status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.slot-status-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.legend-item.available { color: #86efac; }
+.legend-item.booked { color: #fca5a5; }
+.legend-item.already-added { color: #f9a8d4; }
+.legend-item.pending { color: #fcd34d; }
+.legend-item.blocked { color: #f87171; }
+.legend-item.available .legend-dot { background: #22c55e; }
+.legend-item.booked .legend-dot { background: #ef4444; }
+.legend-item.already-added .legend-dot { background: #ec4899; }
+.legend-item.pending .legend-dot { background: #f59e0b; }
+.legend-item.blocked .legend-dot { background: #991b1b; }
+
+.selected-slot-status {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.selected-slot-status.available { color: #86efac; border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.1); }
+.selected-slot-status.booked { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.1); }
+.selected-slot-status.already-added { color: #f9a8d4; border-color: rgba(236, 72, 153, 0.35); background: rgba(236, 72, 153, 0.1); }
+.selected-slot-status.pending { color: #fcd34d; border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.1); }
+.selected-slot-status.blocked { color: #f87171; border-color: rgba(153, 27, 27, 0.45); background: rgba(153, 27, 27, 0.12); }
+
+.form-group input:focus,
+.form-group select:focus {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(236, 72, 153, 0.3);
+  outline: none;
+}
+
+.form-group input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.rate-display {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.rate-hint {
+  color: var(--gray-text);
+  font-size: 0.85rem;
+}
+
+.expired-bookings-modal-content {
+  max-width: 720px;
+}
+
+.modal-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 400;
+  margin-top: 5px;
+}
+
+.expired-bookings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.expired-count {
+  color: #fca5a5;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.expired-booking-list {
+  display: grid;
+  gap: 8px;
+  max-height: 48vh;
+  overflow-y: auto;
+}
+
+.expired-booking-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 9px;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.expired-booking-details {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.expired-booking-details strong,
+.expired-booking-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expired-booking-details strong {
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+.expired-booking-details span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.expired-booking-item .action-btn {
+  min-width: 72px;
+  padding: 7px 10px;
+  flex-shrink: 0;
+}
+
+/* Booking Schedule Modal */
+.calendar-modal-content {
+  max-width: 1180px;
+  background: #111722;
+  border-color: rgba(244, 114, 182, 0.3);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.calendar-modal-content .modal-header {
+  padding: 24px 28px 20px;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.13), rgba(17, 24, 39, 0.1) 58%);
+}
+
+.calendar-modal-content .modal-body {
+  padding: 24px 28px 28px;
+}
+
+.calendar-modal-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #f472b6;
+  font: 600 0.68rem 'IBM Plex Mono', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.calendar-modal-content .modal-header h3 {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.calendar-toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.calendar-day-navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.calendar-day-navigation .btn-secondary {
+  min-width: 150px;
+}
+
+.block-times-modal-content {
+  max-width: 720px;
+}
+
+.block-times-help {
+  color: var(--gray-text);
+  margin: 0 0 14px;
+}
+
+.block-times-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.block-time-court-column {
+  min-width: 0;
+}
+
+.block-time-court-column h4 {
+  margin: 0 0 10px;
+  color: var(--text-primary);
+}
+
+.training-court-column {
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.training-coming-soon {
+  color: var(--gray-text);
+  font-weight: 600;
+}
+
+.block-time-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all 0.22s ease;
+  font-weight: 500;
+}
+
+.block-time-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.block-time-option input {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  background: rgba(255, 255, 255, 0.03);
+  flex-shrink: 0;
+}
+
+.block-time-option input:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.block-time-option input:checked {
+  background: #dc2626;
+  border-color: #dc2626;
+  position: relative;
+}
+
+.block-time-option input:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.block-time-option:has(input:checked) {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.block-time-option.is-booked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .block-times-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.calendar-date-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.calendar-date-controls input[type="date"] {
+  min-width: 180px;
+}
+
+.schedule-booking-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 16px;
+  color: var(--gray-text);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.schedule-booking-counts span {
+  white-space: nowrap;
+}
+
+.schedule-booking-counts strong {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.schedule-booking-counts .court-one-count strong {
+  color: #fbbf24;
+}
+
+.schedule-booking-counts .training-court-count strong {
+  color: #22d3ee;
+}
+
+.schedule-booking-counts .overall-count strong {
+  color: #fb7185;
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 120px repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+  padding: 1px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.schedule-row {
+  display: contents;
+}
+
+.schedule-cell {
+  min-height: 62px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(10, 14, 22, 0.72);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  transition: all 0.15s ease;
+}
+
+.schedule-cell.header {
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.25);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.schedule-cell.training-court-header {
+  background: rgba(34, 211, 238, 0.12);
+  border-color: rgba(34, 211, 238, 0.35);
+  color: #22d3ee;
+}
+
+.schedule-cell.time-label {
+  justify-content: center;
+  text-align: center;
+  color: var(--gray-text);
+  font-weight: 600;
+}
+
+.slot-cell {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.slot-cell:hover {
+  border-color: rgba(236, 72, 153, 0.3);
+  transform: translateY(-1px);
+}
+
+.slot-empty {
+  color: var(--gray-text);
+}
+
+.slot-blocked {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.training-court-slot {
+  background: rgba(34, 211, 238, 0.05);
+  border-color: rgba(34, 211, 238, 0.2);
+}
+
+.training-court-slot:hover {
+  border-color: rgba(34, 211, 238, 0.48);
+}
+
+.training-court-slot.slot-booked {
+  background: rgba(34, 211, 238, 0.16);
+  border-color: rgba(34, 211, 238, 0.38);
+}
+
+.training-court-slot.slot-blocked {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.slot-coming-soon {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: var(--gray-text);
+  cursor: not-allowed;
+}
+
+.slot-coming-soon .slot-subtitle {
+  color: var(--gray-text);
+}
+
+.slot-booked {
+  background: rgba(236, 72, 153, 0.18);
+  border-color: rgba(236, 72, 153, 0.3);
+}
+
+.slot-initials {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.slot-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.slot-reference {
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.62);
+  font: 500 0.62rem 'IBM Plex Mono', monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-subtitle {
+  color: var(--gray-text);
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+
+
+.calendar-detail-meta {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+/* Pending booking alert */
+.pending-alert {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(15, 19, 25, 0.96);
+  color: #f8fafc;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  transform: translateY(-20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.pending-alert.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pending-alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pending-alert-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fda4af;
+}
+
+.pending-alert-message {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #f8fafc;
+}
+
+.pending-alert-action {
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #be185d, #ec4899);
+  color: white;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  color: var(--accent);
+  padding: 14px 20px;
+  border-radius: 10px;
+  z-index: 2000;
+  transition: bottom 0.3s ease;
+  font-weight: 600;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.toast.show {
+  bottom: 20px;
+}
+
+/* Tablet Size (1280 × 800) */
+@media (min-width: 1280px) {
+  .btn-primary,
+  .btn-secondary {
+    font-size: 1rem;
+    padding: 12px 24px;
+  }
+
+  .header-controls {
+    gap: 16px;
+  }
+
+  .filter-input {
+    padding: 10px 14px;
+    font-size: 1rem;
+  }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  main {
+    padding: 24px 16px 60px;
+  }
+
+  .bookings-table {
+    font-size: 0.85rem;
+    min-width: 800px;
+  }
+
+  .bookings-table th,
+  .bookings-table td {
+    padding: 10px 8px;
+  }
+
+  .earnings-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .calendar-modal-content {
+    max-width: 100%;
+  }
+
+  .calendar-date-controls {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .calendar-date-controls input[type="date"] {
+    width: 220px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: 120px repeat(2, minmax(0, 1fr));
+    overflow-x: auto;
+    min-width: 100%;
+  }
+
+  .schedule-cell {
+    min-height: 60px;
+  }
+
+  .header-controls {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .filter-input {
+    width: 100%;
+  }
+
+  .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.8rem;
+  }
+}
+
+@media (max-width: 640px) {
+  main {
+    padding: 16px 12px 60px;
+  }
+
+  .calendar-modal-content {
+    max-width: 100%;
+  }
+
+  .calendar-modal-content .modal-header {
+    padding: 16px 18px;
+  }
+
+  .calendar-modal-content .modal-body {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .calendar-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .calendar-date-controls {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .calendar-date-controls button {
+    width: 100%;
+    min-height: 40px;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .calendar-date-controls input[type="date"] {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    min-height: 40px;
+  }
+
+  .calendar-date-controls button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .calendar-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .calendar-toolbar-actions button {
+    width: 100%;
+    min-height: 40px;
+    justify-content: center;
+    padding: 8px 6px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: 100px repeat(2, minmax(0, 1fr));
+    overflow-x: auto;
+    min-width: 100%;
+  }
+
+  .schedule-cell {
+    min-height: 54px;
+    padding: 8px 10px;
+  }
+
+  .slot-title {
+    font-size: 0.9rem;
+  }
+
+  .slot-subtitle {
+    font-size: 0.78rem;
+  }
+
+  main {
+    padding: 16px 12px 60px;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .dashboard-actions {
+    width: 100%;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dashboard-actions a,
+  .dashboard-actions button {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 16px;
+    font-size: 1rem;
+    min-height: 48px;
+  }
+
+  .dashboard-actions button.btn-secondary,
+  .dashboard-actions a.btn-secondary {
+    border-radius: 14px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .action-btn {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 0.95rem;
+    min-height: 48px;
+  }
+
+  .action-btn.confirm-btn {
+    order: 1;
+  }
+
+  .action-btn.details-btn {
+    order: 2;
+  }
+
+  .action-buttons .action-btn:not(.confirm-btn):not(.details-btn) {
+    order: 3;
+  }
+
+  .earnings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .header-controls {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .filter-input {
+    width: 100%;
+    font-size: 16px;
+  }
+
+  .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .refresh-button {
+    width: auto !important;
+    justify-content: center;
+  }
+
+  .bookings-table {
+    font-size: 0.75rem;
+    min-width: 700px;
+  }
+
+  .bookings-table th,
+  .bookings-table td {
+    padding: 8px 6px;
+    word-break: break-word;
+  }
+
+  .bookings-table th {
+    font-size: 0.7rem;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .action-btn {
+    width: 100%;
+    text-align: center;
+    padding: 4px 6px;
+    font-size: 0.65rem;
+  }
+
+  .modal-content {
+    max-width: 95%;
+  }
+
+  .receipt-view-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .btn-secondary {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+
+  .status-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+  }
+
+  .table-wrapper {
+    border-radius: 10px;
+  }
+
+  .bookings-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bulk-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  nav {
+    padding: 0 12px;
+  }
+
+  .nav-brand {
+    font-size: 0.95rem;
+  }
+
+  .nav-logo {
+    height: 24px;
+  }
+
+  main {
+    padding: 12px 8px 60px;
+  }
+
+  .container {
+    gap: 20px;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.3rem;
+  }
+
+  .dashboard-title p {
+    font-size: 0.85rem;
+  }
+
+  .header-controls {
+    gap: 8px;
+  }
+
+  .filter-input {
+    font-size: 16px;
+    padding: 8px 10px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+
+  .bookings-table {
+    min-width: 600px;
+    font-size: 0.7rem;
+  }
+
+  .bookings-table th,
+  .bookings-table td {
+    padding: 6px 4px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: 100px repeat(2, minmax(0, 1fr));
+    overflow-x: auto;
+    min-width: 100%;
+  }
+
+  .calendar-date-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .calendar-date-controls button,
+  .calendar-date-controls input[type="date"] {
+    width: 100%;
+  }
+
+  .bookings-table th {
+    font-size: 0.65rem;
+  }
+
+  .status-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+
+  .action-btn {
+    font-size: 0.6rem;
+    padding: 3px 4px;
+  }
+
+  .earnings-card {
+    padding: 16px;
+  }
+
+  .earnings-amount {
+    font-size: 1.5rem;
+  }
+
+  .earnings-label {
+    font-size: 0.75rem;
+  }
+
+  .bookings-section h2,
+  .earnings-section h2 {
+    font-size: 1.1rem;
+  }
+
+  .toolbar-copy {
+    font-size: 0.8rem;
+  }
+
+  #pageInfo {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .bookings-table {
+    min-width: 500px;
+  }
+
+  .bookings-table th,
+  .bookings-table td {
+    padding: 5px 3px;
+  }
+
+  .nav-brand {
+    font-size: 0.85rem;
+    gap: 6px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 5px 8px;
+    font-size: 0.7rem;
+  }
+
+  main {
+    padding: 8px 4px 60px;
+  }
+
+  .container {
+    gap: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: min(290px, 86vw);
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    box-shadow: 20px 0 60px rgba(0, 0, 0, 0.38);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 250;
+    display: block;
+    background: rgba(0, 0, 0, 0.58);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+
+  .sidebar-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  nav {
+    margin-left: 0;
+    padding: 0 16px;
+  }
+
+  .menu-toggle {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  main {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .slot-status-legend {
+    gap: 5px 9px;
+    font-size: 0.68rem;
+  }
+
+  .slot-picker {
+    max-height: 190px;
+  }
+
+  .customer-picker {
+    max-height: 130px;
+  }
+
+  .slot-picker-row {
+    min-height: 40px;
+    font-size: 0.76rem;
+  }
+
+  nav {
+    min-height: 64px;
+    height: auto;
+    gap: 10px;
+  }
+
+  .nav-brand {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 0.92rem;
+  }
+
+  .nav-brand > span {
+    display: none;
+  }
 
-    oscillator2.type = 'square';
-    oscillator2.frequency.setValueAtTime(1560, now + 0.05);
-    oscillator2.frequency.exponentialRampToValueAtTime(1880, now + 0.16);
-
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.3, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+  .nav-logo {
+    height: 26px;
+    margin-right: 3px;
+  }
+
+  .menu-toggle {
+    width: 36px;
+    height: 36px;
+  }
+
+  main {
+    padding: 20px 14px 48px;
+  }
+
+  .container {
+    gap: 26px;
+  }
+
+  .dashboard-header {
+    gap: 16px;
+  }
+
+  .dashboard-title,
+  .header-controls,
+  .earnings-section,
+  .bookings-section {
+    width: 100%;
+  }
+
+  .dashboard-title h1 {
+    line-height: 1.15;
+  }
+
+  .dashboard-copy,
+  .earnings-overview-note,
+  .toolbar-copy {
+    line-height: 1.45;
+  }
+
+  .header-controls {
+    gap: 10px;
+  }
+
+  .filter-input {
+    min-height: 44px;
+  }
+
+  .refresh-button {
+    width: 100% !important;
+    min-height: 44px;
+  }
+
+  .earnings-section,
+  .bookings-section {
+    gap: 12px;
+  }
+
+  .earnings-overview-action .btn-primary {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .earnings-extra,
+  .pending-summary-card {
+    width: 100%;
+  }
+
+  .pending-summary-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px 14px;
+  }
+
+  .pending-summary-card .summary-label {
+    margin: 0;
+  }
+
+  .pending-summary-card .summary-value {
+    text-align: right;
+  }
+
+  .leaderboard-section {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .leaderboard-actions,
+  .leaderboard-filter-group,
+  .leaderboard-toggle-btn {
+    width: 100%;
+  }
+
+  .leaderboard-filter-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .leaderboard-filter-btn,
+  .leaderboard-toggle-btn {
+    min-height: 42px;
+  }
+
+  .bookings-toolbar {
+    gap: 12px;
+  }
+
+  .bookings-toolbar > .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .bulk-actions {
+    gap: 8px;
+  }
+
+  .bulk-actions .btn-secondary {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .table-wrapper {
+    margin: 0 -2px;
+  }
 
-    oscillator1.connect(gain);
-    oscillator2.connect(gain);
-    gain.connect(ctx.destination);
+  .pagination {
+    padding: 8px 0;
+  }
 
-    oscillator1.start(now);
-    oscillator2.start(now);
-    oscillator1.stop(now + 0.34);
-    oscillator2.stop(now + 0.34);
-  } catch (err) {
-    console.warn('Unable to play pending booking sound', err);
-  }
-}
-
-function showPendingBookingAlert(newPendingBookings = []) {
-  if (!newPendingBookings.length) return;
-
-  const latest = newPendingBookings[0] || {};
-  const customerName = latest.customer_name || 'A customer';
-  const phone = formatPhone(latest.phone_number || latest.phone || 'N/A');
-  const bookingDate = latest.booking_date || 'soon';
-  const bookingTime = latest.time_slot || latest.booking_time || '';
-  const summary = newPendingBookings.length === 1
-    ? `${customerName} • ${phone} • ${bookingDate}${bookingTime ? ` • ${bookingTime}` : ''}`
-    : `${newPendingBookings.length} new pending bookings. Latest: ${customerName} • ${phone}`;
+  .modal {
+    padding: 12px;
+  }
 
-  const alertBox = document.getElementById('pendingBookingAlert');
-  const alertMessage = document.getElementById('pendingBookingAlertMessage');
+  .modal-content {
+    max-width: 100%;
+    max-height: calc(100vh - 24px);
+  }
 
-  if (alertBox && alertMessage) {
-    alertMessage.textContent = summary;
-    alertBox.classList.add('show');
-    clearTimeout(showPendingBookingAlert.hideTimer);
-    showPendingBookingAlert.hideTimer = setTimeout(() => {
-      alertBox.classList.remove('show');
-    }, 6000);
+  .modal-footer {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
-  showToast(`New pending booking: ${customerName} • ${phone}`);
-  playPendingBookingSound();
-
-  const notificationBody = `${customerName} • ${phone} • ${bookingDate} • Check it now!`;
-  notifyPendingBookingOnDevice('New Pending Booking', notificationBody, newPendingBookings.length);
-
-  const originalTitle = document.title;
-  document.title = 'New Pending Booking • Admin Dashboard';
-  setTimeout(() => {
-    document.title = originalTitle;
-  }, 6000);
-}
-
-showPendingBookingAlert.hideTimer = null;
-
-function scrollToPendingBookings(event) {
-  if (event) event.stopPropagation();
-  const bookingsSection = document.querySelector('.bookings-section');
-  if (bookingsSection) {
-    bookingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  .modal-footer > button {
+    flex: 1 1 140px;
+    justify-content: center;
+  }
 }
+
+@media (max-width: 380px) {
+  nav {
+    padding: 0 10px;
+  }
+
+  .nav-brand {
+    font-size: 0.84rem;
+  }
 
-function trackPendingBookingNotifications(bookings = []) {
-  const pendingBookings = (bookings || []).filter(booking => (booking.status || '').toLowerCase() === 'pending');
-  const currentIds = new Set(pendingBookings.map(booking => booking.id));
-
-  if (!pendingNotificationState.hasInitialized) {
-    pendingNotificationState.knownPendingIds = currentIds;
-    pendingNotificationState.hasInitialized = true;
-    return;
-  }
-
-  const newPendingBookings = pendingBookings.filter(booking => !pendingNotificationState.knownPendingIds.has(booking.id));
-  pendingNotificationState.knownPendingIds = currentIds;
-
-  const now = Date.now();
-  if (newPendingBookings.length && now - pendingNotificationState.lastAlertAt >= pendingNotificationState.cooldownMs) {
-    pendingNotificationState.lastAlertAt = now;
-    showPendingBookingAlert(newPendingBookings);
-  }
-}
-
-function saveAdminLogs(logs) {
-  try {
-    localStorage.setItem(adminLogsStorageKey, JSON.stringify(logs));
-  } catch (err) {
-    console.error('Failed to save admin logs:', err);
-  }
-}
-
-function buildBookingLogDetails(booking = {}) {
-  const parts = [];
-  if (booking.reference_code) parts.push(`Reference: ${booking.reference_code}`);
-  if (booking.customer_name) parts.push(`Customer: ${booking.customer_name}`);
-  if (booking.booking_date) parts.push(`Booking Date: ${booking.booking_date}`);
-  if (booking.booking_time || booking.time_slot) parts.push(`Booking Time: ${booking.booking_time || booking.time_slot}`);
-  if (booking.court || booking.court_name) parts.push(`Court: ${booking.court || booking.court_name}`);
-  if (booking.price || booking.rate) parts.push(`Amount: ₱${Number(booking.price || booking.rate || 0).toLocaleString()}`);
-  return parts.length ? parts.join(' • ') : 'No booking details available.';
-}
-
-async function saveAdminLogToSupabase(entry) {
-  if (!supabaseClient) return false;
-
-  const payload = {
-    type: entry.type,
-    title: entry.title,
-    details: entry.details,
-    reference_code: entry.reference_code || null,
-    customer_name: entry.customer_name || null,
-    booking_id: entry.bookingId || entry.booking_id || null,
-    created_at: entry.createdAt
-  };
-
-  const { error } = await supabaseClient.from('admin_logs').insert(payload);
-  if (error) {
-    console.error('Failed to save admin log to Supabase:', error);
-    return false;
-  }
-
-  return true;
-}
-
-async function addAdminLog(type, title, details, payload = {}) {
-  const currentAdmin = getCurrentAdmin();
-  const actorName = currentAdmin?.name || 'Unknown Admin';
-  const actorPrefix = `Action by ${actorName}. `;
-
-  let serializedDetails = `${actorPrefix}${details}`;
-  if (payload.bookings && Array.isArray(payload.bookings)) {
-    serializedDetails = JSON.stringify({
-      summary: `${actorPrefix}${details}`,
-      bookings: payload.bookings
-    });
-  }
-
-  const entry = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    type,
-    title,
-    details: serializedDetails,
-    createdAt: new Date().toISOString(),
-    actor_name: actorName,
-    ...payload
-  };
-
-  const logs = [entry, ...getAdminLogs()].slice(0, 200);
-  saveAdminLogs(logs);
-  await saveAdminLogToSupabase(entry);
-  return entry;
-}
-
-function getBookingGroupKey(booking) {
-  if (booking.reference_code) return booking.reference_code;
-  return `${booking.customer_name || 'unknown'}|${booking.phone_number || booking.phone || 'unknown'}|${booking.booking_date || ''}`;
-}
-
-function groupBookings(bookings) {
-  const groups = {};
-
-  bookings.forEach(booking => {
-    const key = getBookingGroupKey(booking);
-    if (!groups[key]) {
-      groups[key] = {
-        key,
-        ids: [],
-        bookings: [],
-        reference_code: booking.reference_code || 'N/A',
-        customer_name: booking.customer_name || 'N/A',
-        phone_number: booking.phone_number || booking.phone || 'N/A',
-        totalAmount: 0,
-        status: booking.status || 'pending',
-        courts: new Set(),
-        dates: new Set(),
-        times: new Set(),
-        createdAt: null,
-        bookedOn: 'N/A'
-      };
-    }
-
-    const group = groups[key];
-    group.ids.push(booking.id);
-    group.bookings.push(booking);
-    group.totalAmount += (booking.price || booking.rate || 0);
-    group.courts.add(booking.court || booking.court_name || 'N/A');
-    group.dates.add(booking.booking_date || 'N/A');
-    group.times.add(booking.time_slot || booking.booking_time || 'N/A');
-
-    const createdAtValue = booking.created_at || booking.createdAt || null;
-    if (createdAtValue) {
-      const createdAtDate = new Date(createdAtValue);
-      if (!isNaN(createdAtDate.getTime())) {
-        if (!group.createdAt || createdAtDate < group.createdAt) {
-          group.createdAt = createdAtDate;
-        }
-      }
-    }
-
-    if (group.status !== 'pending') {
-      if (booking.status === 'pending') {
-        group.status = 'pending';
-      } else if (booking.status === 'paid') {
-        group.status = 'paid';
-      }
-    }
-  });
-
-  return Object.values(groups).map(group => {
-    group.courtSummary = group.courts.size === 1 ? Array.from(group.courts)[0] : 'See details';
-    group.dateSummary = group.dates.size === 1 ? Array.from(group.dates)[0] : 'See details';
-    group.timeSummary = group.times.size === 1 ? Array.from(group.times)[0] : 'See details';
-    group.bookedOn = group.createdAt ? formatDateTime(group.createdAt) : 'N/A';
-    group.status = group.bookings.some(b => b.status === 'pending') ? 'pending' : group.bookings.some(b => b.status === 'paid') ? 'paid' : group.bookings[0]?.status || 'pending';
-    return group;
-  });
-}
-
-function parseSlotStartDateTime(bookingDate, timeSlot) {
-  if (!bookingDate) return null;
-  const datePart = bookingDate.trim();
-  let timePart = '';
-
-  if (typeof timeSlot === 'string' && timeSlot.trim()) {
-    // Use the first range token as the start time, e.g. "1:00 PM - 2:00 PM"
-    timePart = timeSlot.split('-')[0].trim();
-  }
-
-  if (!timePart) {
-    const fallback = new Date(`${datePart}T00:00:00`);
-    return isNaN(fallback.getTime()) ? null : fallback;
-  }
-
-  const match = timePart.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/);
-  if (!match) return null;
-
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  const period = match[3].toUpperCase();
-
-  if (period === 'AM' && hours === 12) hours = 0;
-  if (period === 'PM' && hours !== 12) hours += 12;
-
-  const bookingDateTime = new Date(`${datePart}T00:00:00`);
-  if (isNaN(bookingDateTime.getTime())) return null;
-  bookingDateTime.setHours(hours, minutes, 0, 0);
-  return bookingDateTime;
-}
-
-// Check authentication
-function checkAuthentication() {
-  const token = sessionStorage.getItem('adminToken') || localStorage.getItem('adminToken');
-  const profile = sessionStorage.getItem('adminProfile') || localStorage.getItem('adminProfile');
-  if (!token || !profile) {
-    window.location.href = 'index.html';
-    return false;
-  }
-  return true;
-}
-
-// Initialize
-document.addEventListener('DOMContentLoaded', async () => {
-  // Check if user is authenticated
-  if (!checkAuthentication()) {
-    return;
-  }
-  // Initialize Supabase
-  const supabaseConfig = window.SUPABASE_CONFIG || {};
-  const SUPABASE_URL = supabaseConfig.url || "https://nozisfmqzkeywefrqkok.supabase.co";
-  const SUPABASE_ANON_KEY = supabaseConfig.anonKey || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk";
-
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    showToast('Supabase configuration missing. Please set window.SUPABASE_CONFIG.');
-    return;
-  }
-
-  try {
-    updateAdminProfileBadge();
-    await registerPendingBookingNotifications();
-    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    // Test connection
-    const { error } = await supabaseClient.from("bookings").select("id").limit(1);
-    if (error) throw error;
-    
-    showToast('Connected to database');
-    
-    // Set today's date as default range filter (local timezone, no UTC conversion)
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-    
-    const dateFrom = document.getElementById('filterFrom');
-    const dateTo = document.getElementById('filterTo');
-    if (dateFrom) dateFrom.value = dateString;
-    if (dateTo) dateTo.value = dateString;
-    
-    // Load initial data
-    await loadBookings();
-    updateEarnings();
-
-    const refreshPendingBookings = async () => {
-      if (!supabaseClient) return;
-
-      try {
-        const { data, error } = await supabaseClient
-          .from('bookings')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        const bookingsData = data || [];
-        trackPendingBookingNotifications(bookingsData);
-
-        const previousSnapshot = JSON.stringify(allBookings);
-        const nextSnapshot = JSON.stringify(bookingsData);
-        if (previousSnapshot !== nextSnapshot) {
-          allBookings = bookingsData;
-          applyFilters();
-          refreshCalendarView();
-        }
-      } catch (err) {
-        console.error('Background booking refresh failed:', err);
-      }
-    };
-
-    // Prevent PWA from being suspended when backgrounded
-    if ('wakeLock' in navigator) {
-      document.addEventListener('visibilitychange', async () => {
-        if (!document.hidden && 'wakeLock' in navigator) {
-          try {
-            await navigator.wakeLock.request('screen');
-          } catch (err) {
-            if (err?.name !== 'NotAllowedError') {
-              console.warn('Wake lock renewal failed', err);
-            }
-          }
-        }
-      });
-    }
-
-    // Instant refresh when PWA comes back to foreground
-    window.addEventListener('focus', () => {
-      refreshPendingBookings();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        refreshPendingBookings();
-      }
-    });
-
-    // Aggressive polling every 2 seconds
-    setInterval(refreshPendingBookings, 2000);
-  } catch (err) {
-    console.error('Initialization error:', err);
-    showToast('Failed to connect to database');
-  }
-});
-
-// Load all bookings from Supabase
-async function loadBookings() {
-  if (!supabaseClient) {
-    showToast('Database not connected');
-    return;
-  }
-
-  try {
-    // Show loading state
-    const tbody = document.getElementById('bookingsTableBody');
-    tbody.innerHTML = '<tr><td colspan="11" class="loading-cell">Loading bookings...</td></tr>';
-
-    // Fetch all bookings
-    const { data, error } = await supabaseClient
-      .from('bookings')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    const bookingsData = data || [];
-    const expiredUpdated = await updateExpiredBookings(bookingsData);
-    if (expiredUpdated) {
-      await loadBookings();
-      return;
-    }
-
-    allBookings = bookingsData;
-    selectedBookingIds.clear();
-    trackPendingBookingNotifications(bookingsData);
-
-    applyFilters();
-    refreshCalendarView();
-  } catch (err) {
-    console.error('Error loading bookings:', err);
-    showToast('Failed to load bookings');
-  }
-}
-
-// Check if a booking has expired and update status if needed
-async function updateExpiredBookings(bookings) {
-  try {
-    const now = new Date();
-    const expiredIds = [];
-
-    for (const booking of bookings) {
-      // Only check pending bookings
-      if (booking.status !== 'pending') continue;
-
-      let shouldExpire = false;
-
-      if (booking.created_at) {
-        const createdAt = new Date(booking.created_at);
-        if (!isNaN(createdAt.getTime())) {
-          const pendingTimeout = 60 * 60 * 1000; // 60 minutes
-          if (now - createdAt >= pendingTimeout) {
-            shouldExpire = true;
-          }
-        }
-      }
-
-      if (!shouldExpire) {
-        const bookingDate = booking.booking_date;
-        const timeSlot = booking.time_slot || booking.booking_time || '';
-
-        if (!bookingDate) continue;
-
-        const bookingDateTime = parseSlotStartDateTime(bookingDate, timeSlot);
-        if (bookingDateTime && bookingDateTime < now) {
-          shouldExpire = true;
-        } else if (!bookingDateTime) {
-          // If we cannot parse a valid time, still expire after 60 mins from creation
-          // This is handled above by creation time, so do nothing here.
-        }
-      }
-
-      if (shouldExpire) {
-        expiredIds.push(booking.id);
-      }
-    }
-
-    // Update all expired bookings in database
-    if (expiredIds.length > 0) {
-      const { error } = await supabaseClient
-        .from('bookings')
-        .update({ status: 'expired' })
-        .in('id', expiredIds);
-
-      if (error) {
-        console.error('Error updating expired bookings:', error);
-      } else {
-        console.log(`Updated ${expiredIds.length} bookings to expired status`);
-        // Expired bookings are only shown on dashboard, not logged
-        return true;
-      }
-    }
-  } catch (err) {
-    console.error('Error checking for expired bookings:', err);
-  }
-  return false;
-}
-
-// Apply filters and render table
-function applyFilters() {
-  const searchInput = document.getElementById('searchInput');
-  const courtFilterInput = document.getElementById('courtFilter');
-  const statusFilterInput = document.getElementById('filterStatus');
-  const dateFromInput = document.getElementById('filterFrom');
-  const dateToInput = document.getElementById('filterTo');
-
-  const searchTerm = (searchInput?.value || '').trim().toLowerCase();
-  const courtFilter = courtFilterInput?.value || '';
-  const statusFilter = statusFilterInput?.value || '';
-  const dateFrom = dateFromInput?.value || '';
-  const dateTo = dateToInput?.value || '';
-
-  filteredBookings = allBookings.filter(booking => {
-    let matches = true;
-    const searchValue = [booking.reference_code, booking.customer_name, booking.phone_number, booking.customer_email, booking.booking_date, booking.court, booking.court_name]
-      .filter(Boolean)
-      .join(' ').toLowerCase();
-
-    if (searchTerm) {
-      matches = matches && searchValue.includes(searchTerm);
-    }
-
-    if (courtFilter) {
-      const courtName = booking.court || booking.court_name || '';
-      matches = matches && courtName === courtFilter;
-    }
-
-    if (statusFilter) {
-      matches = matches && booking.status === statusFilter;
-    }
-
-    if (dateFrom) {
-      matches = matches && booking.booking_date >= dateFrom;
-    }
-
-    if (dateTo) {
-      matches = matches && booking.booking_date <= dateTo;
-    }
-
-    return matches;
-  });
-
-  currentPage = 1;
-  groupedBookings = groupBookings(filteredBookings);
-  renderAdminLeaderboard();
-  renderTable();
-  updatePagination();
-  updateEarnings();
-}
-
-function toggleLeaderboardCollapse() {
-  const section = document.getElementById('adminLeaderboardSection');
-  const button = document.getElementById('leaderboardToggleBtn');
-
-  if (!section || !button) return;
-
-  const isCollapsed = section.classList.toggle('collapsed');
-  button.textContent = isCollapsed ? 'Show leaderboard' : 'Hide leaderboard';
-  button.setAttribute('aria-expanded', String(!isCollapsed));
-}
-
-function setLeaderboardMode(mode) {
-  leaderboardMode = mode === 'total' ? 'total' : 'monthly';
-  const copy = document.getElementById('leaderboardModeCopy');
-  const buttons = document.querySelectorAll('.leaderboard-filter-btn');
-
-  buttons.forEach(button => {
-    const isActive = button.dataset.leaderboardMode === leaderboardMode;
-    button.classList.toggle('active', isActive);
-  });
-
-  if (copy) {
-    copy.textContent = leaderboardMode === 'total'
-      ? 'Top 6 admins overall by confirmed bookings.'
-      : 'Top 6 admins this month by confirmed bookings.';
-  }
-
-  renderAdminLeaderboard();
-}
-
-function renderAdminLeaderboard() {
-  const leaderboardList = document.getElementById('adminLeaderboardList');
-  if (!leaderboardList) return;
-
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-
-  const filteredBookings = (allBookings || []).filter(booking => {
-    const confirmedAt = booking.confirmed_at || booking.confirmedAt;
-    if (!confirmedAt) return false;
-
-    const confirmedDate = new Date(confirmedAt);
-    if (Number.isNaN(confirmedDate.getTime())) return false;
-
-    if (leaderboardMode === 'monthly') {
-      return confirmedDate.getMonth() === currentMonth && confirmedDate.getFullYear() === currentYear;
-    }
-
-    return true;
-  });
-
-  const leaderboardEntries = filteredBookings
-    .map(booking => booking.confirmed_by || booking.confirmedBy)
-    .filter(Boolean)
-    .reduce((acc, adminName) => {
-      const key = String(adminName).trim();
-      if (!key) return acc;
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-
-  const rankedAdmins = Object.entries(leaderboardEntries)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-    .slice(0, 6);
-
-  leaderboardList.innerHTML = '';
-
-  if (!rankedAdmins.length) {
-    const emptyState = document.createElement('div');
-    emptyState.className = 'leaderboard-empty';
-    emptyState.textContent = leaderboardMode === 'total'
-      ? 'No confirmed bookings yet for the leaderboard.'
-      : 'Leaderboard will light up once bookings start getting confirmed this month.';
-    leaderboardList.appendChild(emptyState);
-    return;
-  }
-
-  const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣'];
-
-  rankedAdmins.forEach((admin, index) => {
-    const item = document.createElement('div');
-    item.className = `leaderboard-item rank-${index + 1}`;
-
-    const rank = document.createElement('div');
-    rank.className = 'leaderboard-rank';
-    rank.textContent = medals[index] || `${index + 1}`;
-
-    const body = document.createElement('div');
-    body.className = 'leaderboard-body';
-
-    const name = document.createElement('div');
-    name.className = 'leaderboard-name';
-    name.textContent = admin.name;
-
-    const count = document.createElement('div');
-    count.className = 'leaderboard-count';
-    count.textContent = `${admin.count} confirmed${leaderboardMode === 'monthly' ? ' this month' : ''}`;
-
-    body.appendChild(name);
-    body.appendChild(count);
-    item.appendChild(rank);
-    item.appendChild(body);
-    leaderboardList.appendChild(item);
-  });
-}
-
-// Render table with pagination
-function renderTable() {
-  const tbody = document.getElementById('bookingsTableBody');
-  tbody.innerHTML = '';
-
-  if (groupedBookings.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" class="loading-cell">No bookings found</td></tr>';
-    return;
-  }
-
-  const start = (currentPage - 1) * itemsPerPage;
-  const end = start + itemsPerPage;
-  const pageBookings = groupedBookings.slice(start, end);
-
-  pageBookings.forEach(group => {
-    const row = document.createElement('tr');
-
-    const selectCell = document.createElement('td');
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = group.ids.every(id => selectedBookingIds.has(id));
-    checkbox.onchange = () => toggleGroupSelection(group);
-    checkbox.className = 'row-checkbox';
-    selectCell.appendChild(checkbox);
-
-    const refCell = createCell(group.reference_code || 'N/A');
-    const nameCell = createCell(group.customer_name || 'N/A');
-    const phoneCell = createCell(formatPhone(group.phone_number || 'N/A'));
-    const bookedOnCell = createCell(group.bookedOn || 'N/A');
-    const courtCell = createCell(group.courtSummary || 'Multiple');
-    const dateCell = createCell(group.dateSummary || 'Multiple');
-    const timeCell = createCell(group.timeSummary || 'Multiple');
-
-    const amountCell = document.createElement('td');
-    amountCell.textContent = '₱' + group.totalAmount.toLocaleString();
-
-    const statusCell = document.createElement('td');
-    const statusBadge = document.createElement('span');
-    statusBadge.className = `status-badge ${group.status || 'pending'}`;
-    statusBadge.textContent = group.status || 'pending';
-    statusCell.appendChild(statusBadge);
-
-    const confirmedByCell = document.createElement('td');
-    const confirmedValues = [...new Set((group.bookings || [])
-      .map(booking => booking.confirmed_by || booking.confirmedBy)
-      .filter(Boolean))];
-    confirmedByCell.textContent = confirmedValues.length ? confirmedValues.join(', ') : '—';
-
-    const actionCell = document.createElement('td');
-    actionCell.className = 'action-buttons';
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'action-btn';
-    editBtn.textContent = 'Edit';
-    editBtn.onclick = () => openEditModal(group.bookings[0]);
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'action-btn';
-    copyBtn.textContent = 'Copy Ref';
-    copyBtn.onclick = () => copyToClipboard(group.reference_code);
-
-    const detailsBtn = document.createElement('button');
-    detailsBtn.className = 'action-btn details-btn';
-    detailsBtn.textContent = 'Details';
-    detailsBtn.onclick = () => openBookingDetails(group);
-
-    actionCell.appendChild(editBtn);
-    actionCell.appendChild(copyBtn);
-    actionCell.appendChild(detailsBtn);
-    if (group.status === 'pending' || group.status === 'expired') {
-      if (group.status === 'pending') {
-        const confirmBtn = document.createElement('button');
-        confirmBtn.className = 'action-btn confirm-btn';
-        confirmBtn.textContent = 'Confirm';
-        confirmBtn.title = 'Confirm booking and send Messenger notification';
-        confirmBtn.onclick = () => confirmBookingViaMessenger(group);
-        actionCell.appendChild(confirmBtn);
-      }
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'action-btn delete-btn';
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.title = group.status === 'pending'
-        ? 'Delete this pending booking group'
-        : 'Delete this expired booking group';
-      deleteBtn.onclick = () => deleteBookingGroup(group);
-      actionCell.appendChild(deleteBtn);
-    }
-
-    row.appendChild(selectCell);
-    row.appendChild(refCell);
-    row.appendChild(nameCell);
-    row.appendChild(phoneCell);
-    row.appendChild(bookedOnCell);
-    row.appendChild(courtCell);
-    row.appendChild(dateCell);
-    row.appendChild(timeCell);
-    row.appendChild(amountCell);
-    row.appendChild(statusCell);
-    row.appendChild(confirmedByCell);
-    row.appendChild(actionCell);
-
-    tbody.appendChild(row);
-  });
-
-  updateBulkActions();
-}
-
-function getNextBookingSlot(booking) {
-  const date = booking.booking_date || booking.date;
-  const time = booking.time_slot || booking.booking_time;
-  const startMinutes = getSlotStartMinutes(time);
-  if (!date || !Number.isFinite(startMinutes) || startMinutes >= 24 * 60) return null;
-
-  const nextStartMinutes = startMinutes + 60;
-  const nextEndMinutes = nextStartMinutes + 60;
-  const formatTime = minutes => {
-    const normalizedMinutes = minutes % (24 * 60);
-    const hours = Math.floor(normalizedMinutes / 60);
-    const minute = String(normalizedMinutes % 60).padStart(2, '0');
-    const suffix = hours < 12 ? 'AM' : 'PM';
-    const displayHour = hours % 12 || 12;
-    return minute === '00' ? `${displayHour}${suffix}` : `${displayHour}:${minute}${suffix}`;
-  };
-
-  const nextDate = new Date(`${date}T00:00:00`);
-  if (Number.isNaN(nextDate.getTime())) return null;
-  if (nextStartMinutes >= 24 * 60) nextDate.setDate(nextDate.getDate() + 1);
-
-  return {
-    date: formatDateKey(nextDate),
-    court: booking.court || booking.court_name || 'Court One',
-    timeSlot: `${formatTime(nextStartMinutes)} - ${formatTime(nextEndMinutes)}`
-  };
-}
-
-let extendBookingGroups = [];
-
-function openExtendBookingModal() {
-  const modal = document.getElementById('extendBookingModal');
-  const customerSelect = document.getElementById('extendBookingCustomer');
-  const customerPicker = document.getElementById('extendCustomerPicker');
-  if (!modal || !customerSelect || !customerPicker) return;
-
-  const todayKey = formatDateKey(new Date());
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayKey = formatDateKey(yesterday);
-  extendBookingGroups = groupBookings(allBookings).filter(group => {
-    const activeBookings = group.bookings.filter(booking =>
-      !['cancelled', 'expired'].includes(String(booking.status || '').toLowerCase())
-    );
-    if (!activeBookings.length) return false;
-
-    const latestBooking = [...activeBookings]
-      .sort((a, b) => getSlotStartMinutes(a.time_slot || a.booking_time) - getSlotStartMinutes(b.time_slot || b.booking_time))
-      .at(-1);
-    const nextSlot = getNextBookingSlot(latestBooking);
-    const hasYesterdayBooking = activeBookings.some(booking =>
-      (booking.booking_date || booking.date || '') === yesterdayKey
-    );
-    return (nextSlot && nextSlot.date >= todayKey) || hasYesterdayBooking;
-  });
-  customerSelect.innerHTML = '';
-  customerPicker.innerHTML = '';
-
-  if (!extendBookingGroups.length) {
-    customerSelect.innerHTML = '<option value="">No active bookings found</option>';
-    customerPicker.innerHTML = '<div class="empty-list">No active bookings found.</div>';
-    modal.classList.add('open');
-    return;
-  }
-
-  extendBookingGroups.forEach((group, index) => {
-    const option = document.createElement('option');
-    option.value = String(index);
-    option.textContent = `${group.customer_name} · ${group.reference_code}`;
-    customerSelect.appendChild(option);
-
-    const customerButton = document.createElement('button');
-    customerButton.type = 'button';
-    customerButton.className = 'customer-picker-row';
-    customerButton.setAttribute('role', 'option');
-    customerButton.innerHTML = `<span class="customer-picker-name">${group.customer_name}</span><span class="customer-picker-reference">${group.reference_code}</span>`;
-    customerButton.onclick = () => {
-      customerSelect.value = String(index);
-      customerPicker.querySelectorAll('.customer-picker-row').forEach(row => row.classList.remove('selected'));
-      customerButton.classList.add('selected');
-      updateExtendBookingFields(true);
-    };
-    customerPicker.appendChild(customerButton);
-  });
-
-  modal.classList.add('open');
-  updateExtendBookingFields(true);
-  customerPicker.querySelector('.customer-picker-row')?.classList.add('selected');
-}
-
-async function updateExtendBookingFields(resetDate = false) {
-  const customerSelect = document.getElementById('extendBookingCustomer');
-  const dateInput = document.getElementById('extendBookingDate');
-  const courtSelect = document.getElementById('extendBookingCourt');
-  const timeSelect = document.getElementById('extendBookingTime');
-  const timePicker = document.getElementById('extendTimeSlotPicker');
-  const customerPicker = document.getElementById('extendCustomerPicker');
-  const group = extendBookingGroups[Number(customerSelect?.value)];
-  if (!group || !dateInput || !courtSelect || !timeSelect || !timePicker) return;
-
-  const source = [...group.bookings]
-    .filter(booking => !['cancelled', 'expired'].includes(String(booking.status || '').toLowerCase()))
-    .sort((a, b) => getSlotStartMinutes(a.time_slot || a.booking_time) - getSlotStartMinutes(b.time_slot || b.booking_time))
-    .at(-1) || group.bookings[0];
-  const nextSlot = getNextBookingSlot(source);
-  const defaultDate = nextSlot?.date || source.booking_date || source.date || formatDateKey(new Date());
-  if (resetDate || !dateInput.value) dateInput.value = defaultDate;
-
-  const currentCourt = courtSelect.value;
-  const courts = [...new Set(group.bookings.map(booking => booking.court || booking.court_name || 'Court One'))];
-  courtSelect.innerHTML = courts.map(court => `<option value="${court}">${court}</option>`).join('');
-  if (courts.includes(currentCourt)) {
-    courtSelect.value = currentCourt;
-  } else if (source.court || source.court_name) {
-    courtSelect.value = source.court || source.court_name;
-  }
-
-  const { data: blockedSlots, error: blockedError } = await supabaseClient
-    .from('blocked_time_slots')
-    .select('time_slot')
-    .eq('blocked_date', dateInput.value)
-    .eq('court', courtSelect.value);
-  if (blockedError) {
-    console.error('Failed to load extension slot statuses:', blockedError);
-  }
-
-  const blockedTimes = new Set((blockedSlots || []).map(slot => getSlotStartMinutes(slot.time_slot)));
-  const groupIds = new Set(group.bookings.map(booking => booking.id));
-  const selectedDate = dateInput.value;
-  const selectedCourt = courtSelect.value;
-  const normalizedCourt = String(selectedCourt).trim().toLowerCase();
-  timeSelect.innerHTML = '';
-  timePicker.innerHTML = '';
-  for (let hour = 0; hour < 24; hour++) {
-    const option = document.createElement('option');
-    const formatTime = minutes => {
-      const normalizedMinutes = minutes % (24 * 60);
-      const hours = Math.floor(normalizedMinutes / 60);
-      const minute = String(normalizedMinutes % 60).padStart(2, '0');
-      const suffix = hours < 12 ? 'AM' : 'PM';
-      const displayHour = hours % 12 || 12;
-      return minute === '00' ? `${displayHour}${suffix}` : `${displayHour}:${minute}${suffix}`;
-    };
-    const timeSlot = `${formatTime(hour * 60)} - ${formatTime((hour + 1) * 60)}`;
-    const timeValue = getSlotStartMinutes(timeSlot);
-    const matchingBookings = allBookings.filter(booking => {
-      const status = String(booking.status || '').toLowerCase();
-      return !groupIds.has(booking.id) &&
-        !['cancelled', 'expired'].includes(status) &&
-        (booking.booking_date || booking.date) === selectedDate &&
-        String(booking.court || booking.court_name || 'Court One').trim().toLowerCase() === normalizedCourt &&
-        getSlotStartMinutes(booking.time_slot || booking.booking_time) === timeValue;
-    });
-    const alreadyAdded = group.bookings.some(booking =>
-      (booking.booking_date || booking.date) === selectedDate &&
-      String(booking.court || booking.court_name || 'Court One').trim().toLowerCase() === normalizedCourt &&
-      getSlotStartMinutes(booking.time_slot || booking.booking_time) === timeValue
-    );
-    const status = blockedTimes.has(timeValue)
-      ? 'Blocked'
-      : alreadyAdded
-        ? 'Already added'
-        : matchingBookings.some(booking => String(booking.status || '').toLowerCase() === 'pending')
-          ? 'Pending'
-          : matchingBookings.length
-            ? 'Booked'
-            : 'Available';
-
-    option.value = timeSlot;
-    option.textContent = `${timeSlot} · ${status}`;
-    option.className = `slot-option slot-option-${status.toLowerCase().replace(/\s+/g, '-')}`;
-    option.disabled = status !== 'Available';
-    timeSelect.appendChild(option);
-
-    const slotButton = document.createElement('button');
-    slotButton.type = 'button';
-    slotButton.className = `slot-picker-row ${status.toLowerCase().replace(/\s+/g, '-')}`;
-    slotButton.setAttribute('role', 'option');
-    slotButton.setAttribute('aria-label', `${timeSlot}, ${status}`);
-    slotButton.disabled = option.disabled;
-    slotButton.innerHTML = `<span class="slot-picker-time">${timeSlot}</span><span class="slot-picker-status">${status}</span><span class="slot-picker-check">${status === 'Available' ? '○' : '—'}</span>`;
-    slotButton.onclick = () => {
-      timeSelect.value = timeSlot;
-      updateExtendSelectedSlotStatus();
-      timePicker.querySelectorAll('.slot-picker-row').forEach(row => row.classList.remove('selected'));
-      slotButton.classList.add('selected');
-    };
-    timePicker.appendChild(slotButton);
-  }
-  const defaultOption = nextSlot && [...timeSelect.options].find(option => option.value === nextSlot.timeSlot);
-  if (defaultOption && !defaultOption.disabled) {
-    timeSelect.value = nextSlot.timeSlot;
-  }
-  updateExtendSelectedSlotStatus();
-  const selectedRow = [...timePicker.querySelectorAll('.slot-picker-row')].find(row => row.querySelector('.slot-picker-time')?.textContent === timeSelect.value);
-  selectedRow?.classList.add('selected');
-  customerPicker?.querySelectorAll('.customer-picker-row').forEach((row, index) => {
-    row.classList.toggle('selected', index === Number(customerSelect.value));
-  });
-}
-
-function updateExtendSelectedSlotStatus() {
-  const timeSelect = document.getElementById('extendBookingTime');
-  const statusDisplay = document.getElementById('extendSelectedSlotStatus');
-  if (!timeSelect || !statusDisplay) return;
-
-  const selectedOption = timeSelect.selectedOptions[0];
-  if (!selectedOption) {
-    statusDisplay.textContent = '';
-    statusDisplay.className = 'selected-slot-status';
-    return;
-  }
-
-  const statusMatch = selectedOption.textContent.match(/·\s*(Available|Booked|Pending|Blocked|Already added)$/);
-  const status = statusMatch ? statusMatch[1] : 'Available';
-  statusDisplay.textContent = `${selectedOption.value} · ${status}`;
-  statusDisplay.className = `selected-slot-status ${status.toLowerCase().replace(/\s+/g, '-')}`;
-
-  document.querySelectorAll('#extendTimeSlotPicker .slot-picker-row').forEach(row => {
-    row.classList.toggle('selected', row.querySelector('.slot-picker-time')?.textContent === selectedOption.value);
-  });
-}
-
-function closeExtendBookingModal() {
-  document.getElementById('extendBookingModal')?.classList.remove('open');
-}
-
-async function submitExtendBooking() {
-  const customerSelect = document.getElementById('extendBookingCustomer');
-  const dateInput = document.getElementById('extendBookingDate');
-  const courtSelect = document.getElementById('extendBookingCourt');
-  const timeSelect = document.getElementById('extendBookingTime');
-  const group = extendBookingGroups[Number(customerSelect?.value)];
-  if (!group || !dateInput?.value || !courtSelect?.value || !timeSelect?.value) {
-    showToast('Select a customer, date, court, and time');
-    return;
-  }
-  if (timeSelect.selectedOptions[0]?.disabled) {
-    showToast('Select an available time slot');
-    return;
-  }
-
-  await extendBookingTime(group, {
-    date: dateInput.value,
-    court: courtSelect.value,
-    timeSlot: timeSelect.value
-  });
-}
-
-async function extendBookingTime(group, requestedSlot = null) {
-  if (!supabaseClient || !group?.bookings?.length) {
-    showToast('Database connection unavailable');
-    return;
-  }
-
-  const source = [...group.bookings]
-    .sort((a, b) => getSlotStartMinutes(a.time_slot || a.booking_time) - getSlotStartMinutes(b.time_slot || b.booking_time))
-    .at(-1);
-  const nextSlot = requestedSlot || getNextBookingSlot(source);
-  if (!nextSlot) {
-    showToast('This booking cannot be extended past 11:00 PM');
-    return;
-  }
-
-  const alreadyInGroup = group.bookings.some(booking =>
-    (booking.booking_date || booking.date) === nextSlot.date &&
-    (booking.court || booking.court_name || 'Court One') === nextSlot.court &&
-    getSlotStartMinutes(booking.time_slot || booking.booking_time) === getSlotStartMinutes(nextSlot.timeSlot)
-  );
-  if (alreadyInGroup) {
-    showToast('This booking already includes the next hour');
-    return;
-  }
-
-  const occupied = allBookings.some(booking => {
-    const status = String(booking.status || '').toLowerCase();
-    return booking.id !== source.id &&
-      !['cancelled', 'expired'].includes(status) &&
-      (booking.booking_date || booking.date) === nextSlot.date &&
-      String(booking.court || booking.court_name || 'Court One').trim().toLowerCase() === String(nextSlot.court).trim().toLowerCase() &&
-      getSlotStartMinutes(booking.time_slot || booking.booking_time) === getSlotStartMinutes(nextSlot.timeSlot);
-  });
-  if (occupied) {
-    showToast('The next hour is already booked');
-    return;
-  }
-
-  const { data: blockedSlots, error: blockedError } = await supabaseClient
-    .from('blocked_time_slots')
-    .select('court, time_slot')
-    .eq('blocked_date', nextSlot.date)
-    .eq('court', nextSlot.court);
-  if (blockedError) {
-    console.error('Failed to check blocked times:', blockedError);
-    showToast('Could not check the next timeslot');
-    return;
-  }
-  if ((blockedSlots || []).some(slot => getSlotStartMinutes(slot.time_slot) === getSlotStartMinutes(nextSlot.timeSlot))) {
-    showToast('The next hour is blocked');
-    return;
-  }
-
-  const { data: freshConflicts, error: freshConflictError } = await supabaseClient
-    .from('bookings')
-    .select('id, status, booking_date, court, court_name, time_slot, booking_time')
-    .eq('booking_date', nextSlot.date)
-    .in('status', ['pending', 'paid', 'confirmed', 'completed', 'unpaid'])
-    .or(`court.eq.${nextSlot.court},court_name.eq.${nextSlot.court}`);
-  if (freshConflictError) {
-    console.error('Failed to verify live booking availability:', freshConflictError);
-    showToast('Could not verify live slot availability');
-    return;
-  }
-
-  const liveSlotTaken = (freshConflicts || []).some(booking =>
-    String(booking.court || booking.court_name || '').trim().toLowerCase() === String(nextSlot.court).trim().toLowerCase() &&
-    getSlotStartMinutes(booking.time_slot || booking.booking_time) === getSlotStartMinutes(nextSlot.timeSlot)
-  );
-  if (liveSlotTaken) {
-    showToast('This slot was just booked. Refresh and choose another time.');
-    return;
-  }
-
-  const extensionRate = getBookingRateForDate(nextSlot.date, nextSlot.timeSlot);
-  const confirmed = confirm(`Extend ${source.customer_name || 'this booking'} to ${nextSlot.timeSlot}?\n\nAdditional rate: ₱${extensionRate.toLocaleString()}`);
-  if (!confirmed) return;
-
-  const payload = { ...source };
-  delete payload.id;
-  payload.booking_date = nextSlot.date;
-  payload.time_slot = nextSlot.timeSlot;
-  payload.booking_time = nextSlot.timeSlot;
-  payload.price = extensionRate;
-  payload.rate = payload.price;
-  payload.created_at = new Date().toISOString();
-
-  try {
-    const { error } = await supabaseClient.from('bookings').insert([payload]);
-    if (error) throw error;
-
-    await addAdminLog(
-      'booking_extended',
-      'Booking time extended',
-      `Added ${nextSlot.timeSlot} for ${source.customer_name || 'booking'} at ${nextSlot.court}.`,
-      { reference_code: source.reference_code, customer_name: source.customer_name, booking_date: nextSlot.date, booking_time: nextSlot.timeSlot }
-    );
-    closeExtendBookingModal();
-    showToast('Booking extended by 1 hour');
-    await loadBookings();
-  } catch (error) {
-    console.error('Failed to extend booking:', error);
-    showToast('Failed to extend booking');
-  }
-}
-
-function toggleGroupSelection(group) {
-  const allSelected = group.ids.every(id => selectedBookingIds.has(id));
-  group.ids.forEach(id => {
-    if (allSelected) {
-      selectedBookingIds.delete(id);
-    } else {
-      selectedBookingIds.add(id);
-    }
-  });
-  updateBulkActions();
-  renderTable();
-}
-
-function createCell(text) {
-  const cell = document.createElement('td');
-  cell.textContent = text;
-  return cell;
-}
-
-function toggleRowSelection(bookingId) {
-  if (selectedBookingIds.has(bookingId)) {
-    selectedBookingIds.delete(bookingId);
-  } else {
-    selectedBookingIds.add(bookingId);
-  }
-  updateBulkActions();
-}
-
-function updateBulkActions() {
-  const bulkBar = document.getElementById('bulkActionsBar');
-  const selectedCount = document.getElementById('selectedCount');
-  const count = selectedBookingIds.size;
-  selectedCount.textContent = `${count} selected`;
-  bulkBar.style.display = count > 0 ? 'flex' : 'none';
-}
-
-function getSelectedBookings() {
-  return allBookings.filter(booking => selectedBookingIds.has(booking.id));
-}
-
-async function setBookingsPending(ids) {
-  if (!ids || ids.length === 0) {
-    return { error: null };
-  }
-
-  const now = new Date().toISOString();
-  const { error } = await supabaseClient
-    .from('bookings')
-    .update({ status: 'pending', created_at: now })
-    .in('id', ids);
-
-  return { error };
-}
-
-async function bulkMarkPending() {
-  const selected = getSelectedBookings();
-  if (selected.length === 0) {
-    showToast('No bookings selected');
-    return;
-  }
-
-  const confirmed = confirm(`Mark ${selected.length} booking(s) as pending and restart their timer?`);
-  if (!confirmed) return;
-
-  const ids = selected.map(b => b.id);
-  const { error } = await setBookingsPending(ids);
-
-  if (error) {
-    console.error('Bulk mark pending error:', error);
-    showToast('Failed to mark pending');
-    return;
-  }
-
-  showToast('Bookings marked pending');
-  selectedBookingIds.clear();
-  await loadBookings();
-}
-
-async function bulkMarkPaid() {
-  const selected = getSelectedBookings();
-  if (selected.length === 0) {
-    showToast('No bookings selected');
-    return;
-  }
-
-  const confirmed = confirm(`Mark ${selected.length} booking(s) as paid?`);
-  if (!confirmed) return;
-
-  const ids = selected.map(b => b.id);
-  const { error } = await supabaseClient
-    .from('bookings')
-    .update({ status: 'paid' })
-    .in('id', ids);
-
-  if (error) {
-    console.error('Bulk mark paid error:', error);
-    showToast('Failed to mark paid');
-    return;
-  }
-
-  showToast('Bookings marked paid');
-  selectedBookingIds.clear();
-  await loadBookings();
-}
-
-async function bulkMarkUnpaid() {
-  const selected = getSelectedBookings();
-  if (selected.length === 0) {
-    showToast('No bookings selected');
-    return;
-  }
-
-  const confirmed = confirm(`Mark ${selected.length} booking(s) as unpaid?`);
-  if (!confirmed) return;
-
-  const ids = selected.map(b => b.id);
-  const { error } = await supabaseClient
-    .from('bookings')
-    .update({ status: 'unpaid' })
-    .in('id', ids);
-
-  if (error) {
-    console.error('Bulk mark unpaid error:', error);
-    showToast('Failed to mark unpaid');
-    return;
-  }
-
-  showToast('Bookings marked unpaid');
-  selectedBookingIds.clear();
-  await loadBookings();
-}
-
-async function bulkCancel() {
-  const selected = getSelectedBookings();
-  if (selected.length === 0) {
-    showToast('No bookings selected');
-    return;
-  }
-
-  const confirmed = confirm(`Cancel ${selected.length} booking(s)?`);
-  if (!confirmed) return;
-
-  const ids = selected.map(b => b.id);
-  const { error } = await supabaseClient
-    .from('bookings')
-    .update({ status: 'cancelled' })
-    .in('id', ids);
-
-  if (error) {
-    console.error('Bulk cancel error:', error);
-    showToast('Failed to cancel');
-    return;
-  }
-
-  showToast('Bookings cancelled');
-  selectedBookingIds.clear();
-  await loadBookings();
-}
-
-async function bulkDelete() {
-  const selected = getSelectedBookings();
-  if (selected.length === 0) {
-    showToast(' No bookings selected for delete');
-    return;
-  }
-
-  const confirmed = confirm(`Delete ${selected.length} booking(s)? This cannot be undone.`);
-  if (!confirmed) return;
-
-  const ids = selected.map(b => b.id);
-  const { error } = await supabaseClient
-    .from('bookings')
-    .delete()
-    .in('id', ids);
-
-  if (error) {
-    console.error('Bulk delete error:', error);
-    showToast('Failed to delete selected bookings');
-    return;
-  }
-
-  const selectedBookings = selected.filter(b => ids.includes(b.id));
-  const bookingPayload = selectedBookings.map(booking => ({
-    bookingId: booking.id,
-    reference_code: booking.reference_code,
-    customer_name: booking.customer_name,
-    booking_date: booking.booking_date,
-    booking_time: booking.booking_time || booking.time_slot,
-    court: booking.court || booking.court_name,
-    amount: booking.price || booking.rate
-  }));
-
-  await addAdminLog(
-    'deleted',
-    'Bulk bookings deleted',
-    `Deleted ${selectedBookings.length} selected booking slot(s).`,
-    {
-      bookingIds: ids,
-      bookings: bookingPayload,
-      reference_code: selectedBookings[0]?.reference_code || null,
-      customer_name: selectedBookings[0]?.customer_name || null,
-      booking_date: selectedBookings[0]?.booking_date || null,
-      booking_time: selectedBookings[0]?.booking_time || selectedBookings[0]?.time_slot || null,
-      court: selectedBookings[0]?.court || selectedBookings[0]?.court_name || null,
-      amount: selectedBookings[0]?.price || selectedBookings[0]?.rate || null
-    }
-  );
-  showToast('Selected bookings deleted');
-  selectedBookingIds.clear();
-  await loadBookings();
-}
-
-function downloadCsv() {
-  const earningsDateInput = document.getElementById('earningsDate');
-  const dateFromInput = document.getElementById('filterFrom');
-  const selectedDate = earningsDateInput?.value ? new Date(earningsDateInput.value) : (dateFromInput?.value ? new Date(dateFromInput.value) : new Date());
-
-  const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-  const monthEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
-  const normalizeDate = (dateStr) => {
-    if (!dateStr) return null;
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return null;
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  };
-
-  const bookingsToExport = (Array.isArray(allBookings) ? allBookings : []).filter(b => {
-    const bDate = normalizeDate(b.booking_date);
-    return bDate && bDate >= monthStart && bDate <= monthEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
-  });
-
-  if (bookingsToExport.length === 0) {
-    showToast('No bookings to export for this month');
-    return;
-  }
-
-  const totalEarn = bookingsToExport.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
-  const formattedTotalEarn = `PHP ${totalEarn.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const formattedReferenceDate = selectedDate.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
-  const rows = [
-    ['Monthly Earnings Export', ''],
-    ['Reference Date', formattedReferenceDate],
-    ['Total Book:', bookingsToExport.length],
-    ['Total Earn:', formattedTotalEarn],
-    [],
-    ['Reference', 'Name', 'Phone', 'Email', 'Court', 'Date', 'Time', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Notes']
-  ];
-
-  bookingsToExport.forEach(b => {
-    rows.push([
-      b.reference_code || '',
-      b.customer_name || '',
-      b.phone_number || '',
-      b.customer_email || b.email || '',
-      b.court || b.court_name || '',
-      b.booking_date || '',
-      b.time_slot || b.booking_time || '',
-      b.price || b.rate || 0,
-      b.payment_method || '',
-      b.transaction_id || b.transaction || '',
-      b.status || '',
-      b.notes || ''
-    ]);
-  });
-
-  if (typeof XLSX === 'undefined') {
-    showToast('Excel export is unavailable. Please check the XLSX library load.');
-    return;
-  }
-
-  const sheetData = [
-    ['Monthly Earnings Export', ''],
-    ['Reference Date', formattedReferenceDate],
-    ['Total Book:', bookingsToExport.length],
-    ['Total Earn:', formattedTotalEarn],
-    [],
-    ['Reference', 'Name', 'Phone', 'Email', 'Court', 'Date', 'Time', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Notes']
-  ];
-
-  bookingsToExport.forEach(b => {
-    sheetData.push([
-      b.reference_code || '',
-      b.customer_name || '',
-      b.phone_number || '',
-      b.customer_email || b.email || '',
-      b.court || b.court_name || '',
-      b.booking_date || '',
-      b.time_slot || b.booking_time || '',
-      parseFloat(b.price || b.rate || 0) || 0,
-      b.payment_method || '',
-      b.transaction_id || b.transaction || '',
-      b.status || '',
-      b.notes || ''
-    ]);
-  });
-
-  const ws = XLSX.utils.aoa_to_sheet(sheetData);
-  const styleCell = (address, style) => {
-    const cell = ws[address];
-    if (cell) cell.s = Object.assign({}, cell.s || {}, style);
-  };
-
-  const headerStyle = {
-    font: { bold: true, color: { rgb: 'FFFFFFFF' } },
-    fill: { fgColor: { rgb: 'FF4F81BD' } }
-  };
-  const summaryStyle = {
-    font: { bold: true },
-    fill: { fgColor: { rgb: 'FFF2F2F2' } }
-  };
-
-  ['A1', 'B1', 'A2', 'B2', 'A3', 'B3', 'A4', 'B4'].forEach(addr => styleCell(addr, summaryStyle));
-  for (let col = 0; col < 12; col++) {
-    styleCell(XLSX.utils.encode_cell({ c: col, r: 5 }), headerStyle);
-  }
-
-  const amountFormat = '#,##0.00';
-  for (let row = 6; row < sheetData.length; row++) {
-    const amountAddr = XLSX.utils.encode_cell({ c: 7, r: row });
-    const amountCell = ws[amountAddr];
-    if (amountCell) {
-      amountCell.t = 'n';
-      amountCell.z = amountFormat;
-      amountCell.s = Object.assign({}, amountCell.s || {}, { numFmt: amountFormat });
-    }
-  }
-
-  ws['!cols'] = [
-    { wch: 18 }, { wch: 20 }, { wch: 16 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 14 }, { wch: 24 }
-  ];
-
-  const monthName = selectedDate.toLocaleString('en-US', { month: 'long' });
-  const year = selectedDate.getFullYear();
-  const fileName = `${monthName} ${year} Monthly Booking Report.xlsx`;
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Report');
-  XLSX.writeFile(wb, fileName);
-  showToast('Monthly Excel export ready');
-}
-
-// Format phone number
-function formatPhone(phone) {
-  if (!phone) return 'N/A';
-  // Remove non-digits
-  const digits = phone.replace(/\D/g, '');
-  // Format as +63 XXX XXX XXXX or show last 10 digits
-  if (digits.length >= 10) {
-    const last10 = digits.slice(-10);
-    return `+63 ${last10.substring(0, 3)} ${last10.substring(3, 6)} ${last10.substring(6)}`;
-  }
-  return phone;
-}
-
-function formatDateTime(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (!date || isNaN(date.getTime())) return 'N/A';
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  });
-}
-
-function getBookingTimeValue(timeValue) {
-  if (!timeValue) return Number.MAX_SAFE_INTEGER;
-  const rawValue = String(timeValue).trim().toUpperCase();
-  const match = rawValue.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/);
-  if (!match) return Number.MAX_SAFE_INTEGER;
-
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2] || '0', 10);
-  const meridiem = match[3];
-
-  if (meridiem === 'PM' && hours !== 12) hours += 12;
-  if (meridiem === 'AM' && hours === 12) hours = 0;
-
-  return hours * 60 + minutes;
-}
-
-function getSlotStartMinutes(timeValue) {
-  return getBookingTimeValue(String(timeValue || '').split('-')[0].trim());
-}
-
-function getBookingsForDate(dateKey) {
-  return allBookings
-    .filter(booking => (booking.booking_date || booking.date || '').toString() === dateKey)
-    .sort((a, b) => {
-      const timeA = getSlotStartMinutes(a.time_slot || a.booking_time || '');
-      const timeB = getSlotStartMinutes(b.time_slot || b.booking_time || '');
-      return timeA - timeB;
-    });
-}
-
-function refreshCalendarView() {
-  const modal = document.getElementById('calendarModal');
-  if (modal && modal.classList.contains('open')) {
-    renderScheduleModal();
-  }
-}
-
-function getScheduleCourts() {
-  return ['Court One', 'Training Court'];
-}
-
-function onScheduleDateChange(event) {
-  const input = event.target;
-  if (!input || !input.value) return;
-  selectedCalendarDate = input.value;
-  renderScheduleModal();
-  loadBlockedTimesForSchedule();
-}
-
-function parseBookingHour(timeValue) {
-  if (!timeValue) return null;
-  const raw = String(timeValue).trim();
-  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
-  if (!match) return null;
-
-  let hour = parseInt(match[1], 10);
-  const minutes = parseInt(match[2] || '0', 10);
-  const ampm = match[3] ? match[3].toUpperCase() : null;
-
-  if (ampm === 'PM' && hour !== 12) hour += 12;
-  if (ampm === 'AM' && hour === 12) hour = 0;
-  if (hour === 24) hour = 0;
-
-  if (minutes >= 30) {
-    // Still map to the slot start hour.
-  }
-
-  if (hour >= 0 && hour <= 23) {
-    return hour;
-  }
-  return null;
-}
-
-function getBookingInitials(name) {
-  if (!name) return '??';
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '??';
-  if (words.length === 1) return words[0].substring(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
-function renderScheduleModal() {
-  const grid = document.getElementById('scheduleGrid');
-  const dateInput = document.getElementById('scheduleDateInput');
-
-  if (!grid || !dateInput) return;
-
-  const activeDate = selectedCalendarDate ? new Date(selectedCalendarDate) : new Date();
-  if (isNaN(activeDate.getTime())) {
-    selectedCalendarDate = formatDateKey(new Date());
-  }
-
-  dateInput.value = selectedCalendarDate;
-  const courts = getScheduleCourts();
-
-  const bookings = getBookingsForDate(selectedCalendarDate);
-  const blockedByCourtHour = new Set(blockedTimeSlots.map(block => `${block.court}|${parseBookingHour(block.time_slot)}`));
-  const bookingsByCourtHour = {};
-  courts.forEach(court => { bookingsByCourtHour[court] = {}; });
-  bookings.forEach(booking => {
-    const courtName = booking.court || booking.court_name || 'Court';
-    const hour = parseBookingHour(booking.time_slot || booking.booking_time || '');
-    if (hour === null) return;
-    const list = bookingsByCourtHour[courtName] || {};
-    list[hour] = list[hour] || [];
-    list[hour].push(booking);
-    bookingsByCourtHour[courtName] = list;
-  });
-
-  grid.innerHTML = '';
-  const headerRow = document.createElement('div');
-  headerRow.className = 'schedule-row';
-  const headerTime = document.createElement('div');
-  headerTime.className = 'schedule-cell header';
-  headerTime.textContent = 'Time';
-  headerRow.appendChild(headerTime);
-  courts.forEach(court => {
-    const cell = document.createElement('div');
-    cell.className = 'schedule-cell header';
-    cell.textContent = court === 'Court One' ? 'Court 1' : 'Training Court - Coming Soon';
-    headerRow.appendChild(cell);
-  });
-  grid.appendChild(headerRow);
-
-  for (let hour = 0; hour < 24; hour++) {
-    const row = document.createElement('div');
-    row.className = 'schedule-row';
-    const timeCell = document.createElement('div');
-    timeCell.className = 'schedule-cell time-label';
-    timeCell.textContent = formatScheduleHour(hour);
-    row.appendChild(timeCell);
-
-    courts.forEach(court => {
-      const slotCell = document.createElement('button');
-      slotCell.type = 'button';
-      slotCell.className = 'schedule-cell slot-cell';
-      const slotBookings = bookingsByCourtHour[court]?.[hour] || [];
-      if (court === 'Training Court') {
-        slotCell.classList.add('slot-coming-soon');
-        slotCell.innerHTML = '<span class="slot-subtitle">Coming Soon</span>';
-      } else if (blockedByCourtHour.has(`${court}|${hour}`)) {
-        slotCell.classList.add('slot-blocked');
-        slotCell.innerHTML = '<span class="slot-initials">Blocked</span><span class="slot-subtitle">Unavailable</span>';
-      } else if (slotBookings.length === 0) {
-        slotCell.classList.add('slot-empty');
-        slotCell.innerHTML = '<span class="slot-subtitle">Available</span>';
-      } else {
-        slotCell.classList.add('slot-booked');
-        const initials = slotBookings.map(b => getBookingInitials(b.customer_name || b.customer || 'Guest')).join(', ');
-        slotCell.innerHTML = `
-          <div class="slot-initials">${initials}</div>
-          <div class="slot-title">${slotBookings[0].customer_name || 'Booked'}</div>
-          ${slotBookings[0].reference_code ? `<div class="slot-reference">${slotBookings[0].reference_code}</div>` : ''}
-          <div class="slot-subtitle">${slotBookings.length > 1 ? `${slotBookings.length} bookings` : (slotBookings[0].time_slot || slotBookings[0].booking_time || 'Booked')}</div>
-        `;
-      }
-      slotCell.onclick = () => {
-        selectedCalendarDate = formatDateKey(new Date(selectedCalendarDate));
-        renderScheduleModal();
-      };
-      row.appendChild(slotCell);
-    });
-
-    grid.appendChild(row);
-  }
-
-}
-
-async function loadBlockedTimesForSchedule() {
-  if (!supabaseClient || !selectedCalendarDate) return;
-  const { data, error } = await supabaseClient
-    .from('blocked_time_slots')
-    .select('court, time_slot')
-    .eq('blocked_date', selectedCalendarDate);
-  if (error) {
-    console.error('Failed to load schedule blocks:', error);
-    return;
-  }
-  blockedTimeSlots = data || [];
-  renderScheduleModal();
-}
-
-function formatScheduleHour(hour) {
-  const suffix = hour < 12 ? 'AM' : 'PM';
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  const endHour = (hour + 1) % 24;
-  const endSuffix = endHour < 12 ? 'AM' : 'PM';
-  const displayEnd = endHour % 12 === 0 ? 12 : endHour % 12;
-  return `${displayHour}${suffix} - ${displayEnd}${endSuffix}`;
-}
-
-function openCalendarModal(date = new Date()) {
-  selectedCalendarDate = formatDateKey(date);
-  const modal = document.getElementById('calendarModal');
-  modal.classList.add('open');
-  document.body.classList.add('modal-open');
-  renderScheduleModal();
-  loadBlockedTimesForSchedule();
-  document.getElementById('scheduleDateInput')?.focus();
-}
-
-function getBlockTimeOptions() {
-  const options = [];
-  for (let hour = 0; hour < 24; hour++) {
-    options.push({ court: 'Court One', hour, time_slot: formatScheduleHour(hour) });
-  }
-  return options;
-}
-
-async function loadBlockTimesForDate() {
-  const dateInput = document.getElementById('blockTimesDate');
-  const optionsContainer = document.getElementById('blockTimesOptions');
-  if (!dateInput || !optionsContainer || !dateInput.value) return;
-
-  optionsContainer.innerHTML = '<div class="empty-list">Loading timeslots...</div>';
-  const { data, error } = await supabaseClient
-    .from('blocked_time_slots')
-    .select('court, time_slot')
-    .eq('blocked_date', dateInput.value);
-  if (error) {
-    console.error('Failed to load blocked times:', error);
-    optionsContainer.innerHTML = '<div class="empty-list">Unable to load blocked timeslots.</div>';
-    return;
-  }
-
-  blockedTimeSlots = data || [];
-  const bookedKeys = new Set();
-  getBookingsForDate(dateInput.value).forEach(booking => {
-    const court = booking.court || booking.court_name || '';
-    const hour = parseBookingHour(booking.time_slot || booking.booking_time);
-    if (hour !== null) bookedKeys.add(`${court}|${hour}`);
-  });
-  optionsContainer.innerHTML = '';
-  const courtOneColumn = document.createElement('div');
-  courtOneColumn.className = 'block-time-court-column';
-  courtOneColumn.innerHTML = '<h4>Court 1</h4>';
-  const trainingColumn = document.createElement('div');
-  trainingColumn.className = 'block-time-court-column training-court-column';
-  trainingColumn.innerHTML = '<h4>Training Court</h4><div class="training-coming-soon">Coming Soon</div>';
-
-  getBlockTimeOptions().forEach(option => {
-    const isBooked = bookedKeys.has(`${option.court}|${option.hour}`);
-    const isBlocked = blockedTimeSlots.some(block => block.court === option.court && parseBookingHour(block.time_slot) === option.hour);
-    const label = document.createElement('label');
-    label.className = `block-time-option${isBooked ? ' is-booked' : ''}`;
-    label.innerHTML = `<input type="checkbox" value="${option.hour}" data-court="${option.court}"${isBlocked ? ' checked' : ''}${isBooked ? ' disabled' : ''}><span>${option.court} · ${option.time_slot}${isBooked ? ' · Booked' : ''}</span>`;
-    courtOneColumn.appendChild(label);
-  });
-  optionsContainer.appendChild(courtOneColumn);
-  optionsContainer.appendChild(trainingColumn);
-}
-
-function openBlockTimesModal() {
-  const dateInput = document.getElementById('blockTimesDate');
-  if (!dateInput) return;
-  dateInput.value = selectedCalendarDate || formatDateKey(new Date());
-  document.getElementById('blockTimesModal').classList.add('open');
-  loadBlockTimesForDate();
-}
-
-function closeBlockTimesModal() {
-  document.getElementById('blockTimesModal')?.classList.remove('open');
-}
-
-async function saveBlockedTimes() {
-  const date = document.getElementById('blockTimesDate')?.value;
-  const options = [...document.querySelectorAll('#blockTimesOptions input[type="checkbox"]:checked')];
-  if (!date) return showToast('Select a date first');
-  if (!supabaseClient) return showToast('Database connection unavailable');
-
-  const selected = options.map(input => ({ blocked_date: date, court: input.dataset.court, time_slot: formatScheduleHour(Number(input.value)) }));
-  const { data: existing, error: existingError } = await supabaseClient
-    .from('blocked_time_slots')
-    .select('court, time_slot')
-    .eq('blocked_date', date);
-  if (existingError) {
-    console.error('Failed to load existing blocked times:', existingError);
-    return showToast('Could not update blocked timeslots');
-  }
-
-  const slotKey = slot => `${slot.court}|${slot.time_slot}`;
-  const existingKeys = new Set((existing || []).map(slotKey));
-  const selectedKeys = new Set(selected.map(slotKey));
-  const addedSlots = selected.filter(slot => !existingKeys.has(slotKey(slot)));
-  const removedSlots = (existing || []).filter(slot => !selectedKeys.has(slotKey(slot)));
-  const { error: deleteError } = await supabaseClient.from('blocked_time_slots').delete().eq('blocked_date', date);
-  if (deleteError) {
-    console.error('Failed to update blocked times:', deleteError);
-    return showToast('Could not update blocked timeslots');
-  }
-  if (selected.length) {
-    const { error } = await supabaseClient.from('blocked_time_slots').insert(selected);
-    if (error) {
-      console.error('Failed to save blocked times:', error);
-      return showToast('Could not save blocked timeslots');
-    }
-  }
-
-  const changedSlots = [
-    ...addedSlots.map(slot => ({ ...slot, action: 'blocked' })),
-    ...removedSlots.map(slot => ({ blocked_date: date, ...slot, action: 'unblocked' }))
-  ];
-  if (changedSlots.length) {
-    const actionSummary = [
-      addedSlots.length ? `Blocked ${addedSlots.length} slot${addedSlots.length === 1 ? '' : 's'}` : '',
-      removedSlots.length ? `unblocked ${removedSlots.length} slot${removedSlots.length === 1 ? '' : 's'}` : ''
-    ].filter(Boolean).join('; ');
-    await addAdminLog(
-      'blocked',
-      'Blocked time slots updated',
-      `${actionSummary} for ${date}.`,
-      {
-        booking_date: date,
-        bookings: changedSlots.map(slot => ({
-          booking_date: date,
-          booking_time: slot.time_slot,
-          court: slot.court,
-          action: slot.action
-        }))
-      }
-    );
-  }
-
-  blockedTimeSlots = selected;
-  selectedCalendarDate = date;
-  closeBlockTimesModal();
-  renderScheduleModal();
-  showToast(`${selected.length} timeslot${selected.length === 1 ? '' : 's'} blocked`);
-}
-
-function getExpiredBookings() {
-  return (allBookings || []).filter(booking => String(booking.status || '').toLowerCase() === 'expired');
-}
-
-function openExpiredBookingsModal() {
-  const modal = document.getElementById('expiredBookingsModal');
-  if (!modal) return;
-  renderExpiredBookings();
-  modal.classList.add('open');
-}
-
-function closeExpiredBookingsModal() {
-  document.getElementById('expiredBookingsModal')?.classList.remove('open');
-}
-
-function renderExpiredBookings() {
-  const list = document.getElementById('expiredBookingList');
-  const count = document.getElementById('expiredBookingsCount');
-  const deleteAllButton = document.getElementById('deleteAllExpiredBtn');
-  const summary = document.getElementById('expiredBookingsSummary');
-  if (!list || !count || !deleteAllButton || !summary) return;
-
-  const expiredBookings = getExpiredBookings();
-  count.textContent = `${expiredBookings.length} expired slot${expiredBookings.length === 1 ? '' : 's'}`;
-  deleteAllButton.disabled = expiredBookings.length === 0;
-  summary.textContent = expiredBookings.length
-    ? 'Delete expired slots manually when they are no longer needed.'
-    : 'No expired bookings to review.';
-  list.innerHTML = '';
-
-  if (!expiredBookings.length) {
-    list.innerHTML = '<div class="empty-list">No expired bookings found.</div>';
-    return;
-  }
-
-  expiredBookings
-    .slice()
-    .sort((a, b) => String(b.booking_date || '').localeCompare(String(a.booking_date || '')))
-    .forEach(booking => {
-      const item = document.createElement('div');
-      item.className = 'expired-booking-item';
-
-      const details = document.createElement('div');
-      details.className = 'expired-booking-details';
-      const customer = document.createElement('strong');
-      customer.textContent = booking.customer_name || 'Unknown customer';
-      const meta = document.createElement('span');
-      meta.textContent = `${booking.reference_code || 'No reference'} · ${booking.booking_date || 'No date'} · ${booking.time_slot || booking.booking_time || 'No time'} · ${booking.court || booking.court_name || 'Court'}`;
-      details.append(customer, meta);
-
-      const deleteButton = document.createElement('button');
-      deleteButton.type = 'button';
-      deleteButton.className = 'action-btn delete-btn';
-      deleteButton.textContent = 'Delete';
-      deleteButton.onclick = () => deleteExpiredBooking(booking);
-      item.append(details, deleteButton);
-      list.appendChild(item);
-    });
-}
-
-async function deleteExpiredBooking(booking) {
-  if (!supabaseClient || !booking?.id) {
-    showToast('Database connection unavailable');
-    return;
-  }
-  const confirmed = confirm(`Delete expired booking for ${booking.customer_name || 'this customer'}?\n\n${booking.booking_date || ''} · ${booking.time_slot || booking.booking_time || ''}`);
-  if (!confirmed) return;
-
-  const { error } = await supabaseClient.from('bookings').delete().eq('id', booking.id);
-  if (error) {
-    console.error('Failed to delete expired booking:', error);
-    showToast('Failed to delete expired booking');
-    return;
-  }
-
-  await addAdminLog(
-    'deleted',
-    'Expired booking deleted',
-    `Deleted expired booking ${booking.reference_code || booking.id} for ${booking.customer_name || 'Unknown customer'}.`,
-    {
-      bookingId: booking.id,
-      reference_code: booking.reference_code,
-      customer_name: booking.customer_name,
-      booking_date: booking.booking_date,
-      booking_time: booking.booking_time || booking.time_slot,
-      court: booking.court || booking.court_name,
-      amount: booking.price || booking.rate
-    }
-  );
-  showToast('Expired booking deleted');
-  await loadBookings();
-  renderExpiredBookings();
-}
-
-async function deleteAllExpiredBookings() {
-  const expiredBookings = getExpiredBookings();
-  if (!expiredBookings.length || !supabaseClient) return;
-  const confirmed = confirm(`Delete all ${expiredBookings.length} expired booking slots? This cannot be undone.`);
-  if (!confirmed) return;
-
-  const ids = expiredBookings.map(booking => booking.id).filter(Boolean);
-  const { error } = await supabaseClient.from('bookings').delete().in('id', ids);
-  if (error) {
-    console.error('Failed to delete expired bookings:', error);
-    showToast('Failed to delete expired bookings');
-    return;
-  }
-
-  await addAdminLog('deleted', 'Expired bookings deleted', `Deleted ${ids.length} expired booking slot(s).`, {
-    bookingIds: ids,
-    bookings: expiredBookings.map(booking => ({
-      bookingId: booking.id,
-      reference_code: booking.reference_code,
-      customer_name: booking.customer_name,
-      booking_date: booking.booking_date,
-      booking_time: booking.booking_time || booking.time_slot,
-      court: booking.court || booking.court_name,
-      amount: booking.price || booking.rate
-    }))
-  });
-  showToast('Expired bookings deleted');
-  await loadBookings();
-  renderExpiredBookings();
-}
-
-function closeCalendarModal() {
-  document.getElementById('calendarModal').classList.remove('open');
-  document.body.classList.remove('modal-open');
-}
-
-function changeScheduleDay(step) {
-  const current = new Date(selectedCalendarDate || formatDateKey(new Date()));
-  current.setDate(current.getDate() + step);
-  selectedCalendarDate = formatDateKey(current);
-  renderScheduleModal();
-  loadBlockedTimesForSchedule();
-}
-
-function goToScheduleToday() {
-  const today = new Date();
-  selectedCalendarDate = formatDateKey(today);
-  renderScheduleModal();
-  loadBlockedTimesForSchedule();
-}
-
-// Update earnings cards
-function updateEarnings() {
-  // Use the earnings modal date if set, otherwise fallback to the filter date or today
-  const earningsDateInput = document.getElementById('earningsDate');
-  const dateFromInput = document.getElementById('filterFrom');
-  let selectedDate;
-  
-  if (earningsDateInput?.value) {
-    selectedDate = new Date(earningsDateInput.value);
-  } else if (dateFromInput?.value) {
-    selectedDate = new Date(dateFromInput.value);
-  } else {
-    selectedDate = new Date();
-  }
-
-  // Helper function to normalize date comparison
-  const normalizeDate = (dateStr) => {
-    if (!dateStr) return null;
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return null;
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  };
-
-  const selectedDateNormalized = normalizeDate(formatDateKey(selectedDate));
-
-  // Calculate the week range (Sunday to Saturday)
-  const dayOfWeek = selectedDate.getDay();
-  const weekStart = new Date(selectedDate);
-  weekStart.setDate(selectedDate.getDate() - dayOfWeek); // Start from Sunday
-  
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6); // End on Saturday
-
-  // Calculate the month range (1st to last day)
-  const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-  const monthEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
-
-  // Use all bookings for earnings overview
-  const bookingsToUse = allBookings;
-
-  // Today's earnings - bookings on the selected date only
-  const todayBookings = bookingsToUse.filter(b => {
-    const bDate = normalizeDate(b.booking_date);
-    return bDate && bDate.getTime() === selectedDateNormalized.getTime() && b.status !== 'cancelled' && b.status !== 'unpaid';
-  });
-  const todayEarnings = todayBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
-
-  // Weekly earnings - Sunday to Saturday of the selected week
-  const weeklyBookings = bookingsToUse.filter(b => {
-    const bDate = normalizeDate(b.booking_date);
-    return bDate && bDate >= weekStart && bDate <= weekEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
-  });
-  const weeklyEarnings = weeklyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
-
-  // Monthly earnings - all bookings in the month
-  const monthlyBookings = bookingsToUse.filter(b => {
-    const bDate = normalizeDate(b.booking_date);
-    return bDate && bDate >= monthStart && bDate <= monthEnd && b.status !== 'cancelled' && b.status !== 'unpaid';
-  });
-  const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
-
-  // Pending payments from all bookings
-  const pendingBookings = bookingsToUse.filter(b => b.status === 'pending');
-  const pendingAmount = pendingBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
-
-  // Update UI
-  document.getElementById('todayEarnings').textContent = '₱' + todayEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  document.getElementById('todayCount').textContent = `${todayBookings.length} booking${todayBookings.length !== 1 ? 's' : ''}`;
-
-  document.getElementById('weeklyEarnings').textContent = '₱' + weeklyEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  document.getElementById('weeklyCount').textContent = `${weeklyBookings.length} booking${weeklyBookings.length !== 1 ? 's' : ''}`;
-
-  document.getElementById('monthlyEarnings').textContent = '₱' + monthlyEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  document.getElementById('monthlyCount').textContent = `${monthlyBookings.length} booking${monthlyBookings.length !== 1 ? 's' : ''}`;
-
-  document.getElementById('pendingAmount').textContent = '₱' + pendingAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  document.getElementById('pendingCount').textContent = `${pendingBookings.length} booking${pendingBookings.length !== 1 ? 's' : ''}`;
-}
-
-const earningsModalPassword = 'picklesocial26';
-
-function openEarningsModalWithPassword() {
-  const modal = document.getElementById('earningsPasswordModal');
-  const input = document.getElementById('earningsPasswordInput');
-  if (!modal || !input) {
-    openEarningsModal();
-    return;
-  }
-
-  input.value = '';
-  modal.classList.add('open');
-  setTimeout(() => input.focus(), 120);
-}
-
-function closeEarningsPasswordModal() {
-  const modal = document.getElementById('earningsPasswordModal');
-  if (modal) modal.classList.remove('open');
-}
-
-function submitEarningsPassword() {
-  const input = document.getElementById('earningsPasswordInput');
-  if (!input) return false;
-
-  if (input.value.trim() === earningsModalPassword) {
-    closeEarningsPasswordModal();
-    openEarningsModal();
-  } else {
-    showToast('Incorrect password');
-    input.value = '';
-    input.focus();
-  }
-
-  return false;
-}
-
-function openEarningsModal() {
-  const earningsDateInput = document.getElementById('earningsDate');
-  if (earningsDateInput && !earningsDateInput.value) {
-    earningsDateInput.value = formatDateKey(new Date());
-  }
-  updateEarnings();
-  document.getElementById('earningsModal').classList.add('open');
-}
-
-function closeEarningsModal() {
-  document.getElementById('earningsModal').classList.remove('open');
-}
-
-function openAddBookingModal() {
-  const modal = document.getElementById('addBookingModal');
-  if (!modal) return;
-
-  const dateInput = document.getElementById('addBookingDate');
-  if (dateInput && !dateInput.value) {
-    dateInput.value = formatDateKey(new Date());
-  }
-
-  const customerNameInput = document.getElementById('addBookingCustomerName');
-  const phoneInput = document.getElementById('addBookingPhone');
-  const timeInput = document.getElementById('addBookingTime');
-  const courtSelect = document.getElementById('addBookingCourt');
-  const statusSelect = document.getElementById('addBookingStatus');
-  const notesInput = document.getElementById('addBookingNotes');
-
-  if (customerNameInput) customerNameInput.value = '';
-  if (phoneInput) phoneInput.value = '';
-  if (timeInput) timeInput.value = '';
-  if (courtSelect) courtSelect.value = 'Court One';
-  if (statusSelect) statusSelect.value = 'paid';
-  if (notesInput) notesInput.value = '';
-
-  updateAddBookingRate();
-  modal.classList.add('open');
-  setTimeout(() => customerNameInput?.focus(), 120);
-}
-
-function closeAddBookingModal() {
-  const modal = document.getElementById('addBookingModal');
-  if (modal) modal.classList.remove('open');
-}
-
-function updateAddBookingRate() {
-  const dateInput = document.getElementById('addBookingDate');
-  const rateValue = document.getElementById('addBookingRateValue');
-  if (!dateInput || !rateValue) return;
-
-  const timeInput = document.getElementById('addBookingTime');
-  const rate = getBookingRateForDate(dateInput.value, timeInput?.value || '');
-  rateValue.textContent = `₱${rate}`;
-}
-
-async function submitAddBooking() {
-  if (!supabaseClient) {
-    showToast('Database not connected');
-    return;
-  }
-
-  const customerName = document.getElementById('addBookingCustomerName')?.value?.trim() || '';
-  const phone = document.getElementById('addBookingPhone')?.value?.trim() || '';
-  const bookingDate = document.getElementById('addBookingDate')?.value || '';
-  const bookingTime = document.getElementById('addBookingTime')?.value || '';
-  const timeSlot = bookingTime ? formatTimeInputValue(bookingTime) : '';
-  const court = document.getElementById('addBookingCourt')?.value || '';
-  const status = document.getElementById('addBookingStatus')?.value || 'paid';
-  const notes = document.getElementById('addBookingNotes')?.value?.trim() || '';
-
-  const missing = [];
-  if (!customerName) missing.push('name');
-  if (!phone) missing.push('phone');
-  if (!bookingDate) missing.push('date');
-  if (!timeSlot) missing.push('time');
-  if (!court) missing.push('court');
-
-  if (missing.length > 0) {
-    showToast(`Please fill in ${missing.join(', ')}.`);
-    return;
-  }
-
-  const price = getBookingRateForDate(bookingDate, timeSlot);
-  const referenceCode = `PKL-${Date.now().toString(36).toUpperCase()}`;
-
-  const payload = {
-    reference_code: referenceCode,
-    customer_name: customerName,
-    phone_number: phone,
-    booking_date: bookingDate,
-    time_slot: timeSlot,
-    booking_time: timeSlot,
-    court,
-    court_name: court,
-    status,
-    price,
-    rate: price,
-    notes: notes || null,
-    created_at: new Date().toISOString()
-  };
-
-  try {
-    const { error } = await supabaseClient.from('bookings').insert([payload]);
-    if (error) throw error;
-
-    showToast('Booking added successfully');
-    closeAddBookingModal();
-    await loadBookings();
-  } catch (error) {
-    console.error('Failed to add booking:', error);
-    showToast('Failed to add booking');
-  }
-}
-
-function setEarningsDateToToday() {
-  const earningsDateInput = document.getElementById('earningsDate');
-  if (!earningsDateInput) return;
-  earningsDateInput.value = formatDateKey(new Date());
-  updateEarnings();
-}
-
-// Format date to YYYY-MM-DD
-function formatTimeInputValue(value) {
-  if (!value) return '';
-  const trimmed = value.trim();
-
-  const parseSingleTime = (input) => {
-    const normalized = input.trim().replace(/\s+/g, ' ');
-    const ampmMatch = normalized.match(/^([0-9]{1,2})(?::([0-9]{2}))?\s*(AM|PM)$/i);
-    if (ampmMatch) {
-      let hours = Number(ampmMatch[1]);
-      const minutes = Number(ampmMatch[2] || '00');
-      const suffix = ampmMatch[3].toUpperCase();
-      if (hours === 0) hours = 12;
-      if (hours > 12) hours = hours % 12;
-      return `${hours}:${String(minutes).padStart(2, '0')} ${suffix}`;
-    }
-
-    const twentyFourMatch = normalized.match(/^([0-9]{1,2})(?::([0-9]{2}))?$/);
-    if (twentyFourMatch) {
-      let hours = Number(twentyFourMatch[1]);
-      const minutes = Number(twentyFourMatch[2] || '00');
-      if (hours >= 24 || minutes >= 60) return normalized;
-      const suffix = hours >= 12 ? 'PM' : 'AM';
-      if (hours === 0) hours = 12;
-      else if (hours > 12) hours -= 12;
-      return `${hours}:${String(minutes).padStart(2, '0')} ${suffix}`;
-    }
-
-    return normalized;
-  };
-
-  const rangeMatch = trimmed.match(/^(.+?)\s*-\s*(.+)$/);
-  if (rangeMatch) {
-    const start = parseSingleTime(rangeMatch[1]);
-    const end = parseSingleTime(rangeMatch[2]);
-    return `${start} - ${end}`;
-  }
-
-  return parseSingleTime(trimmed);
-}
-
-function formatDateKey(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-// Pagination
-function buildPageButtons(totalPages, currentPage) {
-  const buttons = [];
-  const maxButtons = 20;
-
-  if (totalPages <= maxButtons) {
-    for (let page = 1; page <= totalPages; page++) {
-      buttons.push(page);
-    }
-    return buttons;
-  }
-
-  const visible = new Set([1, 2, totalPages - 1, totalPages]);
-  visible.add(currentPage);
-  if (currentPage - 1 > 1) visible.add(currentPage - 1);
-  if (currentPage + 1 < totalPages) visible.add(currentPage + 1);
-  if (currentPage - 2 > 1) visible.add(currentPage - 2);
-  if (currentPage + 2 < totalPages) visible.add(currentPage + 2);
-
-  const sorted = Array.from(visible).filter(page => page >= 1 && page <= totalPages).sort((a, b) => a - b);
-  const expanded = [];
-  let last = 0;
-
-  sorted.forEach(page => {
-    if (page - last > 1) {
-      if (page - last === 2) {
-        expanded.push(last + 1);
-      } else {
-        expanded.push('...');
-      }
-    }
-    expanded.push(page);
-    last = page;
-  });
-
-  return expanded;
-}
-
-function updatePagination() {
-  const totalPages = Math.ceil(groupedBookings.length / itemsPerPage);
-  const prevBtn = document.getElementById('prevPageBtn');
-  const nextBtn = document.getElementById('nextPageBtn');
-  const pageButtons = document.getElementById('pageButtons');
-
-  if (prevBtn) prevBtn.disabled = currentPage === 1;
-  if (nextBtn) nextBtn.disabled = currentPage >= totalPages || totalPages === 0;
-
-  if (!pageButtons) return;
-  pageButtons.innerHTML = '';
-
-  const pages = buildPageButtons(totalPages, currentPage);
-  pages.forEach(page => {
-    if (page === '...') {
-      const ellipsis = document.createElement('span');
-      ellipsis.className = 'page-break';
-      ellipsis.textContent = '...';
-      pageButtons.appendChild(ellipsis);
-      return;
-    }
-
-    const btn = document.createElement('button');
-    btn.className = 'page-number-btn';
-    btn.textContent = page;
-    btn.disabled = page === currentPage;
-    if (page === currentPage) {
-      btn.classList.add('active');
-    }
-    btn.onclick = () => {
-      currentPage = page;
-      renderTable();
-      updatePagination();
-    };
-    pageButtons.appendChild(btn);
-  });
-}
-
-function openBookingDetails(group) {
-  document.getElementById('detailsReference').textContent = group.reference_code || 'N/A';
-  document.getElementById('detailsCustomer').textContent = group.customer_name || 'N/A';
-  document.getElementById('detailsPhone').textContent = formatPhone(group.phone_number || 'N/A');
-  document.getElementById('detailsBookedOn').textContent = group.bookedOn || 'N/A';
-  document.getElementById('detailsTotal').textContent = '₱' + group.totalAmount.toLocaleString();
-  document.getElementById('detailsStatus').textContent = group.status || 'pending';
-
-  const list = document.getElementById('bookingDetailsList');
-  list.innerHTML = '';
-  group.bookings.forEach((booking, index) => {
-    const item = document.createElement('div');
-    item.className = 'list-item';
-    
-    const topDiv = document.createElement('div');
-    topDiv.className = 'list-item-top';
-    topDiv.innerHTML = `
-      <strong>Booking ${index + 1}</strong>
-      <span class="status-badge ${booking.status || 'pending'}">${booking.status || 'pending'}</span>
-    `;
-    
-    const bottomDiv = document.createElement('div');
-    bottomDiv.className = 'list-item-bottom';
-    bottomDiv.innerHTML = `
-      <span>${booking.court || booking.court_name || 'Court'}</span>
-      <span>${booking.booking_date || 'N/A'}</span>
-      <span>${booking.time_slot || booking.booking_time || 'N/A'}</span>
-      <span>₱${(booking.price || booking.rate || 0).toLocaleString()}</span>
-    `;
-    
-    const actionDiv = document.createElement('div');
-    actionDiv.className = 'list-item-actions';
-    
-    if (booking.status === 'pending') {
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'action-btn delete-btn';
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.onclick = () => deleteBooking(booking);
-      actionDiv.appendChild(deleteBtn);
-    } else {
-      const pendingBtn = document.createElement('button');
-      pendingBtn.className = 'action-btn';
-      pendingBtn.textContent = 'Mark Pending';
-      pendingBtn.onclick = async () => {
-        const { error } = await setBookingsPending([booking.id]);
-        if (error) {
-          showToast('Failed to mark as pending');
-        } else {
-          showToast('Booking marked as pending');
-          await loadBookings();
-          openBookingDetails(group);
-        }
-      };
-      actionDiv.appendChild(pendingBtn);
-      
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'action-btn delete-btn';
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.onclick = () => deleteBooking(booking);
-      actionDiv.appendChild(deleteBtn);
-    }
-    
-    item.appendChild(topDiv);
-    item.appendChild(bottomDiv);
-    item.appendChild(actionDiv);
-    list.appendChild(item);
-  });
-
-  currentBookingDetailsGroup = group;
-  document.getElementById('bookingDetailsModal').classList.add('open');
-}
-
-function closeBookingDetails() {
-  document.getElementById('bookingDetailsModal').classList.remove('open');
-  currentBookingDetailsGroup = null;
-}
-
-function copyBookingDetailsConfirmation() {
-  const group = currentBookingDetailsGroup;
-  if (!group) {
-    showToast('No booking details available to copy');
-    return;
-  }
-
-  const customerName = group.customer_name || 'N/A';
-  const bookingReference = group.reference_code || 'N/A';
-  const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
-
-  const sortTime = (timeStr) => {
-    // Match time at the start: "8PM" or "8:30PM" (handles both HH:MM and HH formats)
-    const match = timeStr.match(/^(\d+)(?::(\d+))?\s*(AM|PM)/i);
-    if (!match) return 0;
-    let hours = parseInt(match[1]);
-    const minutes = match[2] ? parseInt(match[2]) : 0;
-    const meridiem = match[3].toUpperCase();
-    if (meridiem === 'PM' && hours !== 12) hours += 12;
-    if (meridiem === 'AM' && hours === 12) hours = 0;
-    return hours * 60 + minutes;
-  };
-
-  // Group bookings by date
-  const dateGroups = (group.bookings || []).reduce((acc, booking) => {
-    const date = booking.booking_date || 'N/A';
-    const courtName = booking.court || booking.court_name || 'N/A';
-    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
-    
-    if (!acc[date]) acc[date] = {};
-    if (!acc[date][courtName]) acc[date][courtName] = [];
-    if (!acc[date][courtName].includes(timeSlot)) acc[date][courtName].push(timeSlot);
-    
-    return acc;
-  }, {});
-
-  // Sort dates
-  const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
-
-  // Build message with separated dates
-  const dateBookingLines = sortedDates.map(date => {
-    const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const courtGroups = dateGroups[date];
-    
-    const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
-      times.sort((a, b) => sortTime(a) - sortTime(b));
-      const timesList = times.map(timeSlot => ` ${timeSlot}`).join('\n');
-      return `${courtName}\n${timesList}`;
-    }).join('\n\n');
-
-    return `📅 ${formattedDate}\n${courtLines}`;
-  }).join('\n\n');
-
-  const message = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n\n${dateBookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(message).then(() => {
-      showToast('Booking confirmation copied');
-    }).catch(() => {
-      prompt('Copy the text below for Messenger:', message);
-    });
-  } else {
-    prompt('Copy the text below for Messenger:', message);
-  }
-}
-
-function copyBookingDetailsPendingMessage() {
-  const group = currentBookingDetailsGroup;
-  if (!group) {
-    showToast('No booking details available to copy');
-    return;
-  }
-
-  const customerName = group.customer_name || group.customer || 'Customer';
-  const bookingReference = group.reference_code || group.reference || 'N/A';
-  const totalAmount = group.totalAmount || (group.bookings || []).reduce((sum, booking) => {
-    return sum + (parseFloat(booking.price) || parseFloat(booking.rate) || 0);
-  }, 0);
-  const totalDue = '₱' + totalAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-
-  const sortTime = (timeStr) => {
-    const match = timeStr.match(/^(\d+)(?::(\d+))?\s*(AM|PM)/i);
-    if (!match) return 0;
-    let hours = parseInt(match[1], 10);
-    const minutes = match[2] ? parseInt(match[2], 10) : 0;
-    const meridiem = match[3].toUpperCase();
-    if (meridiem === 'PM' && hours !== 12) hours += 12;
-    if (meridiem === 'AM' && hours === 12) hours = 0;
-    return hours * 60 + minutes;
-  };
-
-  const dateGroups = (group.bookings || []).reduce((acc, booking) => {
-    const date = booking.booking_date || 'N/A';
-    const courtName = booking.court || booking.court_name || 'Court';
-    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
-
-    acc[date] = acc[date] || {};
-    acc[date][courtName] = acc[date][courtName] || new Set();
-    acc[date][courtName].add(timeSlot);
-
-    return acc;
-  }, {});
-
-  const formattedDateGroups = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b)).map(date => {
-    const formattedDate = isNaN(new Date(date).getTime()) ? date : new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const courtLines = Object.entries(dateGroups[date]).map(([courtName, timeSet]) => {
-      const times = Array.from(timeSet).sort((a, b) => sortTime(a) - sortTime(b));
-      const timeLines = times.map(timeSlot => `• ${timeSlot}`).join('\n');
-      return `**${courtName}**\n${timeLines}`;
-    }).join('\n\n');
-
-    return `📅 ${formattedDate}\n\n${courtLines}`;
-  }).join('\n\n');
-
-  const message = `⏳ PENDING BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for your booking request at Pickle Social - Cebu.\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Amount Due: ${totalDue}\n\n${formattedDateGroups}\n\n⚠️ Status: PENDING PAYMENT CONFIRMATION\n\nTo confirm your reservation, please send your GCash payment receipt together with your booking reference number via Messenger.\n\nYour selected time slots will remain reserved while awaiting payment verification.\n\nThank you, and we look forward to seeing you on the court! 🏓`;
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(message).then(() => {
-      showToast('Pending message copied');
-    }).catch(() => {
-      prompt('Copy the text below for Messenger:', message);
-    });
-  } else {
-    prompt('Copy the text below for Messenger:', message);
-  }
-}
-
-function previousPage() {
-  if (currentPage > 1) {
-    currentPage--;
-    renderTable();
-    updatePagination();
-  }
-}
-
-function nextPage() {
-  const totalPages = Math.ceil(groupedBookings.length / itemsPerPage);
-  if (currentPage < totalPages) {
-    currentPage++;
-    renderTable();
-    updatePagination();
-  }
-}
-
-// Refresh data
-async function refreshData() {
-  await loadBookings();
-}
-
-// Edit Modal
-function openEditModal(booking) {
-  currentEditingBooking = booking;
-  document.getElementById('editRef').value = booking.reference_code || '';
-  document.getElementById('editName').value = booking.customer_name || '';
-  document.getElementById('editPhone').value = booking.phone_number || '';
-  document.getElementById('editEmail').value = booking.customer_email || booking.email || '';
-  document.getElementById('editStatus').value = booking.status || 'pending';
-  document.getElementById('editAmount').value = booking.price || booking.rate || '';
-  document.getElementById('editNotes').value = booking.notes || '';
-  
-  document.getElementById('editModal').classList.add('open');
-}
-
-function closeEditModal() {
-  document.getElementById('editModal').classList.remove('open');
-  currentEditingBooking = null;
-}
-
-function getReceiptImageUrl(booking) {
-  return booking.receipt_url || booking.receipt_url_full || booking.receiptImageUrl || booking.receipt_image || booking.receipt_image_url || booking.receipt || null;
-}
-
-function openReceiptViewer(booking) {
-  const imageUrl = getReceiptImageUrl(booking);
-  const imageEl = document.getElementById('receiptViewImage');
-  const placeholderEl = document.getElementById('receiptViewPlaceholder');
-
-  if (imageEl && placeholderEl) {
-    if (imageUrl) {
-      imageEl.src = imageUrl;
-      imageEl.style.display = 'block';
-      placeholderEl.style.display = 'none';
-    } else {
-      imageEl.src = '';
-      imageEl.style.display = 'none';
-      placeholderEl.style.display = 'block';
-    }
-  }
-
-  document.getElementById('receiptViewName').textContent = booking.customer_name || booking.name || 'Unknown';
-  document.getElementById('receiptViewReference').textContent = booking.reference_code || booking.reference || 'N/A';
-  document.getElementById('receiptViewDate').textContent = booking.booking_date || booking.date || 'N/A';
-  document.getElementById('receiptViewTime').textContent = booking.time_slot || booking.booking_time || 'N/A';
-  document.getElementById('receiptViewAmount').textContent = '₱' + ((booking.price || booking.rate || 0).toLocaleString());
-  document.getElementById('receiptViewPayment').textContent = booking.payment_method || booking.paymentMethod || 'Unknown';
-  document.getElementById('receiptViewTransaction').textContent = booking.transaction_id || booking.transaction || 'N/A';
-  document.getElementById('receiptViewStatus').textContent = booking.status || 'pending';
-
-  document.getElementById('receiptViewModal').classList.add('open');
-}
-
-function closeReceiptViewer() {
-  document.getElementById('receiptViewModal').classList.remove('open');
-}
-
-async function saveBookingChanges() {
-  if (!currentEditingBooking || !supabaseClient) {
-    showToast('Error: booking not selected');
-    return;
-  }
-
-  const name = document.getElementById('editName').value.trim();
-  const phone = document.getElementById('editPhone').value.trim();
-  const email = document.getElementById('editEmail').value.trim();
-  const status = document.getElementById('editStatus').value;
-  const amount = parseFloat(document.getElementById('editAmount').value) || 0;
-  const notes = document.getElementById('editNotes').value.trim();
-
-  if (!name || !phone) {
-    showToast('âš ï¸ Please fill in all required fields');
-    return;
-  }
-
-  try {
-    console.log('=== UPDATING BOOKING ===');
-    console.log('Booking ID:', currentEditingBooking.id);
-    console.log('Customer Name:', name);
-    console.log('Phone:', phone);
-
-    const updateData = {
-      customer_name: name,
-      phone_number: phone,
-      customer_email: email,
-      status: status,
-      price: amount,
-      notes: notes
-    };
-
-    console.log('Update data:', JSON.stringify(updateData, null, 2));
-
-    const { data, error, status: responseStatus, statusText } = await supabaseClient
-      .from('bookings')
-      .update(updateData)
-      .eq('id', currentEditingBooking.id);
-
-    console.log('Update response:', { data, error, status: responseStatus, statusText });
-
-    if (error) {
-      console.error('âŒ Update error:', error);
-      console.error('Full error object:', JSON.stringify(error, null, 2));
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      console.error('Error details:', error.details);
-      console.error('Error hint:', error.hint);
-      
-      // Show detailed error to user
-      let errorMsg = error.message || 'Unknown error';
-      if (error.details) errorMsg += '\n\nDetails: ' + error.details;
-      if (error.hint) errorMsg += '\n\nHint: ' + error.hint;
-      
-      alert('Error updating booking:\n\n' + errorMsg + '\n\nCheck browser console (F12) for more details.');
-      
-      // Check if it's an RLS policy error
-      if (error.code === 'PGRST301' || error.message.includes('policy')) {
-        alert(
-          'RLS Policy Error: Your Supabase database has Row Level Security policies that prevent updates.\n\n' +
-          'To fix this:\n' +
-          '1. Go to Supabase Dashboard\n' +
-          '2. Select your database\n' +
-          '3. Go to "Bookings" table\n' +
-          '4. Click "Auth" menu\n' +
-          '5. Check if RLS is enabled\n' +
-          '6. Add an update policy or disable RLS for testing\n\n' +
-          'Error: ' + error.message
-        );
-        return;
-      }
-      
-      return;
-    }
-
-    console.log('Booking updated successfully');
-
-    if (currentEditingBooking.status !== 'expired' && status === 'expired') {
-      await addAdminLog(
-        'expired',
-        'Booking marked expired',
-        `Booking ${currentEditingBooking.reference_code || currentEditingBooking.id} was marked as expired manually.`,
-        {
-          bookingId: currentEditingBooking.id,
-          bookings: [{
-            bookingId: currentEditingBooking.id,
-            reference_code: currentEditingBooking.reference_code,
-            customer_name: name,
-            booking_date: currentEditingBooking.booking_date,
-            booking_time: currentEditingBooking.booking_time || currentEditingBooking.time_slot,
-            court: currentEditingBooking.court || currentEditingBooking.court_name,
-            amount: amount || currentEditingBooking.price || currentEditingBooking.rate
-          }],
-          reference_code: currentEditingBooking.reference_code,
-          customer_name: name,
-          booking_date: currentEditingBooking.booking_date,
-          booking_time: currentEditingBooking.booking_time || currentEditingBooking.time_slot,
-          court: currentEditingBooking.court || currentEditingBooking.court_name,
-          amount: amount || currentEditingBooking.price || currentEditingBooking.rate
-        }
-      );
-    }
-
-    showToast('Booking updated successfully');
-    closeEditModal();
-    await loadBookings();
-  } catch (err) {
-    console.error('âŒ Exception during update:', err);
-    console.error('Error stack:', err.stack);
-    showToast('Failed to save booking');
-  }
-}
-
-// Copy to clipboard
-function copyToClipboard(text) {
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Copied to clipboard');
-  }).catch(() => {
-    showToast(' Failed to copy');
-  });
-}
-
-// Delete booking
-async function deleteBooking(booking) {
-  // Confirmation dialog
-  const confirmed = confirm(
-    `Are you sure you want to delete this booking?\n\n` +
-    `Reference: ${booking.reference_code}\n` +
-    `Customer: ${booking.customer_name}\n` +
-    `Date: ${booking.booking_date}\n\n` +
-    `This action cannot be undone.`
-  );
-
-  if (!confirmed) {
-    return;
-  }
-
-  if (!supabaseClient) {
-    showToast('Database not connected');
-    return;
-  }
-
-  try {
-    console.log('=== DELETING BOOKING ===');
-    console.log('Booking ID:', booking.id);
-    console.log('Booking Reference:', booking.reference_code);
-    console.log('Booking Status:', booking.status);
-
-    // Try deleting by ID first
-    const { data, error, status, statusText } = await supabaseClient
-      .from('bookings')
-      .delete()
-      .eq('id', booking.id);
-
-    console.log('Delete response:', { data, error, status, statusText });
-
-    if (error) {
-      console.error('âŒ Delete error:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      console.error('Error details:', error.details);
-      console.error('Error hint:', error.hint);
-      
-      // Check if it's an RLS policy error
-      if (error.code === 'PGRST301' || error.message.includes('policy')) {
-        alert(
-          'RLS Policy Error: Your Supabase database has Row Level Security policies that prevent deletion.\n\n' +
-          'To fix this:\n' +
-          '1. Go to Supabase Dashboard\n' +
-          '2. Select your database\n' +
-          '3. Go to "Bookings" table\n' +
-          '4. Click "Auth" menu\n' +
-          '5. Check if RLS is enabled\n' +
-          '6. Add a delete policy or disable RLS for testing\n\n' +
-          'Error: ' + error.message
-        );
-        return;
-      }
-      
-      throw error;
-    }
-
-    console.log('Booking deleted from database');
-    await addAdminLog(
-      'deleted',
-      'Booking deleted',
-      `Deleted booking ${booking.reference_code || booking.id} for ${booking.customer_name || 'Unknown'}.`,
-      {
-        bookingId: booking.id,
-        bookings: [{
-          bookingId: booking.id,
-          reference_code: booking.reference_code,
-          customer_name: booking.customer_name,
-          booking_date: booking.booking_date,
-          booking_time: booking.booking_time || booking.time_slot,
-          court: booking.court || booking.court_name,
-          amount: booking.price || booking.rate
-        }],
-        reference_code: booking.reference_code,
-        customer_name: booking.customer_name,
-        booking_date: booking.booking_date,
-        booking_time: booking.booking_time || booking.time_slot,
-        court: booking.court || booking.court_name,
-        amount: booking.price || booking.rate
-      }
-    );
-    showToast('Booking deleted successfully');
-    
-    // Remove from local array and refresh UI immediately
-    allBookings = allBookings.filter(b => b.id !== booking.id);
-    applyFilters();
-    updateEarnings();
-    
-  } catch (err) {
-    console.error('âŒ Exception during delete:', err);
-    console.error('Error stack:', err.stack);
-    showToast('Failed to delete booking');
-  }
-}
-
-async function deleteBookingGroup(group) {
-  const deletableIds = group.bookings.filter(b => ['pending', 'expired'].includes(b.status)).map(b => b.id);
-  if (deletableIds.length === 0) {
-    showToast('No pending or expired bookings in this group to delete');
-    return;
-  }
-
-  const confirmed = confirm(
-    `Are you sure you want to delete ${deletableIds.length} pending/expired booking(s) for ${group.customer_name} (${group.reference_code})? This cannot be undone.`
-  );
-  if (!confirmed) return;
-
-  const { error } = await supabaseClient
-    .from('bookings')
-    .delete()
-    .in('id', deletableIds);
-
-  if (error) {
-    console.error('Bulk delete group error:', error);
-    showToast('Failed to delete bookings');
-    return;
-  }
-
-  const deletedBookings = group.bookings.filter(b => deletableIds.includes(b.id));
-  const bookingPayload = deletedBookings.map(booking => ({
-    bookingId: booking.id,
-    reference_code: booking.reference_code,
-    customer_name: booking.customer_name,
-    booking_date: booking.booking_date,
-    booking_time: booking.booking_time || booking.time_slot,
-    court: booking.court || booking.court_name,
-    amount: booking.price || booking.rate
-  }));
-
-  await addAdminLog(
-    'deleted',
-    'Booking group deleted',
-    `Deleted ${deletedBookings.length} booking slot(s) from group ${group.reference_code || 'N/A'}.`,
-    {
-      bookingIds: deletableIds,
-      bookings: bookingPayload,
-      reference_code: group.reference_code,
-      customer_name: group.customer_name,
-      booking_date: deletedBookings[0]?.booking_date || null,
-      booking_time: deletedBookings[0]?.booking_time || deletedBookings[0]?.time_slot || null,
-      court: deletedBookings[0]?.court || deletedBookings[0]?.court_name || null,
-      amount: deletedBookings[0]?.price || deletedBookings[0]?.rate || null
-    }
-  );
-  showToast('Booking group deleted successfully');
-  selectedBookingIds.clear();
-  await loadBookings();
-}
-
-// Payment confirmation functions removed - now handled via Messenger automation
-// Use the /api/confirm-booking endpoint to confirm bookings and send Messenger notifications
-
-function copyBookingConfirmationText(group) {
-  const customerName = group.customer_name || 'N/A';
-  const bookingReference = group.reference_code || 'N/A';
-  const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
-  const dates = Array.from(group.dates || new Set());
-  const formattedDates = dates.length
-    ? dates.map(d => {
-        const parsed = new Date(d);
-        if (isNaN(parsed)) return d;
-        return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      }).join(', ')
-    : 'N/A';
-
-  const courtGroups = (group.bookings || []).reduce((acc, booking) => {
-    const courtName = booking.court || booking.court_name || 'N/A';
-    const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
-    if (!acc[courtName]) acc[courtName] = [];
-    if (!acc[courtName].includes(timeSlot)) acc[courtName].push(timeSlot);
-    return acc;
-  }, {});
-
-  const timeIcons = ['ðŸ•š', 'ðŸ•›', 'ðŸ•', 'ðŸ•‘', 'ðŸ•’', 'ðŸ•“', 'ðŸ•”', 'ðŸ••', 'ðŸ•–', 'ðŸ•—', 'ðŸ•˜', 'ðŸ•™'];
-  const bookingLines = Object.entries(courtGroups).map(([courtName, times]) => {
-    const timeLines = times.map((timeSlot, index) => `${timeIcons[index] || 'ðŸ•š'} ${timeSlot}`).join('\n');
-    return `ðŸŸï¸ ${courtName}\n${timeLines}`;
-  }).join('\n\n');
-
-  const message =
-    `BOOKING CONFIRMATION\n\n` +
-    `Hello ${customerName},\n\n` +
-    `Thank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. âœ…\n\n` +
-    `ðŸ“Œ Booking Reference: ${bookingReference}\n` +
-    `ðŸ’³ Total Paid: ${totalPaid}\n` +
-    `ðŸ“… Date: ${formattedDates}\n\n` +
-    `${bookingLines ? bookingLines + '\n\n' : ''}` +
-    `Thank you for booking with us! Your reservation has been successfully confirmed.`;
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(message).catch(() => {
-      prompt('Copy the text below for Messenger:', message);
-    });
-  } else {
-    prompt('Copy the text below for Messenger:', message);
-  }
-}
-
-// Confirm payment - now handled via Messenger automation through /api/confirm-booking
-// This function has been removed as bookings are now confirmed via direct Messenger API
-
-// Confirm booking - shows booking info in modal with copy button and updates status
-async function confirmBookingViaMessenger(group) {
-  const referenceCode = group.reference_code;
-  if (!referenceCode) {
-    showToast('No reference code found');
-    return;
-  }
-
-  const conflicts = findBookingConflicts(allBookings, group.bookings);
-  if (conflicts.length > 0) {
-    const conflict = conflicts[0];
-    const conflictReference = conflict.reference_code || 'another booking';
-    showToast(`Cannot confirm: this slot is already booked (${conflictReference}).`);
-    return;
-  }
-
-  try {
-    const customerName = group.customer_name || 'N/A';
-    const bookingReference = group.reference_code || 'N/A';
-    const totalPaid = `₱${(group.totalAmount || 0).toLocaleString()}`;
-
-    const sortTime = (timeStr) => {
-      // Match time at the start: "8PM" or "8:30PM" (handles both HH:MM and HH formats)
-      const match = timeStr.match(/^(\d+)(?::(\d+))?\s*(AM|PM)/i);
-      if (!match) return 0;
-      let hours = parseInt(match[1]);
-      const minutes = match[2] ? parseInt(match[2]) : 0;
-      const meridiem = match[3].toUpperCase();
-      if (meridiem === 'PM' && hours !== 12) hours += 12;
-      if (meridiem === 'AM' && hours === 12) hours = 0;
-      return hours * 60 + minutes;
-    };
-
-    // Group bookings by date
-    const dateGroups = (group.bookings || []).reduce((acc, booking) => {
-      const date = booking.booking_date || 'N/A';
-      const courtName = booking.court || booking.court_name || 'N/A';
-      const timeSlot = booking.time_slot || booking.booking_time || 'N/A';
-      
-      if (!acc[date]) acc[date] = {};
-      if (!acc[date][courtName]) acc[date][courtName] = [];
-      if (!acc[date][courtName].includes(timeSlot)) acc[date][courtName].push(timeSlot);
-      
-      return acc;
-    }, {});
-
-    // Sort dates
-    const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
-
-    // Build message with separated dates
-    const dateBookingLines = sortedDates.map(date => {
-      const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      const courtGroups = dateGroups[date];
-      
-      const courtLines = Object.entries(courtGroups).map(([courtName, times]) => {
-        times.sort((a, b) => sortTime(a) - sortTime(b));
-        const timesList = times.map(timeSlot => ` ${timeSlot}`).join('\n');
-        return `${courtName}\n${timesList}`;
-      }).join('\n\n');
-
-      return `📅 ${formattedDate}\n${courtLines}`;
-    }).join('\n\n');
-
-    const confirmationText = `BOOKING CONFIRMATION\n\nHello ${customerName},\n\nThank you for booking with Pickle Social - Cebu! Your reservation has been successfully confirmed. ✅\n\n📌 Booking Reference: ${bookingReference}\n💳 Total Paid: ${totalPaid}\n\n${dateBookingLines}\n\nThank you for booking with us! Your reservation has been successfully confirmed.`;
-
-    // Store the text in a global variable for copying later
-    window.currentConfirmationText = confirmationText;
-    
-    const currentAdmin = getCurrentAdmin();
-    const confirmedBy = currentAdmin?.name || currentAdmin?.username || 'admin';
-    const confirmedAt = new Date().toISOString();
-
-    // Update booking status to "paid" in Supabase
-    if (group.ids && group.ids.length > 0 && supabaseClient) {
-      const { data, error } = await supabaseClient
-        .from('bookings')
-        .update({
-          status: 'paid',
-          confirmed_by: confirmedBy,
-          confirmed_at: confirmedAt
-        })
-        .in('id', group.ids)
-        .in('status', ['pending', 'unpaid'])
-        .select();
-
-      if (error) {
-        console.error('Error updating booking status:', error);
-        showToast('Warning: Could not update booking status');
-      } else if (!data || data.length === 0) {
-        console.log('Booking confirmation was already processed by another admin');
-        showToast('This booking was already confirmed by another admin');
-      } else {
-        console.log('Booking status updated to paid');
-      }
-    }
-    
-    // Display in modal
-    document.getElementById('confirmationText').textContent = confirmationText;
-    document.getElementById('bookingConfirmationModal').style.display = 'flex';
-    
-    // Reload bookings to reflect the status change
-    await loadBookings();
-  } catch (error) {
-    console.error('Error processing booking:', error);
-    showToast(`Error: ${error.message}`);
-  }
-}
-
-function closeBookingConfirmationModal() {
-  document.getElementById('bookingConfirmationModal').style.display = 'none';
-}
-
-function copyConfirmationText() {
-  const text = window.currentConfirmationText;
-  if (!text) {
-    showToast('No confirmation text to copy');
-    return;
-  }
-
-  navigator.clipboard.writeText(text)
-    .then(() => {
-      showToast('Booking info copied to clipboard!');
-      closeBookingConfirmationModal();
-    })
-    .catch(err => {
-      console.error('Failed to copy:', err);
-      showToast('Failed to copy booking info');
-    });
-}
-
-function openTodayModal() {
-  const today = new Date();
-  const todayKey = formatDateKey(today);
-  const todayBookings = allBookings.filter(b => {
-    const bookingDate = b.booking_date || b.date || '';
-    return bookingDate === todayKey;
-  });
-  const pending = todayBookings.filter(b => b.status === 'pending').length;
-  const paidCompleted = todayBookings.filter(b => b.status === 'paid' || b.status === 'completed').length;
-
-  document.getElementById('todaySummaryDate').textContent = today.toLocaleDateString();
-  document.getElementById('todaySummaryTotal').textContent = todayBookings.length;
-  document.getElementById('todaySummaryPending').textContent = pending;
-  document.getElementById('todaySummaryPaid').textContent = paidCompleted;
-
-  const listContainer = document.getElementById('todayBookingList');
-  listContainer.innerHTML = '';
-
-  if (todayBookings.length === 0) {
-    listContainer.innerHTML = '<div class="empty-list">No bookings found for today.</div>';
-  } else {
-    todayBookings.forEach(booking => {
-      const item = document.createElement('div');
-      const bookingDate = booking.booking_date || booking.date || '';
-      const timeSlot = booking.time_slot || booking.booking_time || 'TBD';
-      const reference = booking.reference_code || booking.reference || '';
-      item.className = 'list-item';
-      item.innerHTML = `
-        <div class="list-item-top">
-          <div><strong>${booking.customer_name || 'Unknown'}</strong> Â· ${booking.court || booking.court_name || 'Court'}</div>
-          <div class="status-badge ${booking.status || 'pending'}">${booking.status || 'pending'}</div>
-        </div>
-        <div class="list-item-bottom">
-          <span>${bookingDate}</span>
-          <span>${timeSlot}</span>
-          <span>₱${(booking.price || booking.rate || 0).toLocaleString()}</span>
-          <span>${reference}</span>
-        </div>
-      `;
-      listContainer.appendChild(item);
-    });
-  }
-
-  document.getElementById('todayModal').classList.add('open');
-}
-
-function closeTodayModal() {
-  document.getElementById('todayModal').classList.remove('open');
-}
-
-// Logout
-function logout() {
-  if (confirm('Are you sure you want to logout?')) {
-    sessionStorage.removeItem('adminToken');
-    sessionStorage.removeItem('adminProfile');
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('adminProfile');
-    window.location.href = 'index.html';
-  }
-}
-
-// Toast notification
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-// Close modal on escape key
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeEditModal();
-    closeReceiptViewer();
-    closeBookingDetails();
-    closeTodayModal();
-    closeCalendarModal();
-  }
-});
+  main {
+    padding-inline: 10px;
+  }
 
+  .leaderboard-section {
+    padding: 14px;
+  }
 
+  .pending-summary-card {
+    grid-template-columns: 1fr;
+  }
 
+  .pending-summary-card .summary-value {
+    text-align: left;
+  }
 
+  .bulk-actions .btn-secondary {
+    flex-basis: 100%;
+  }
+}
