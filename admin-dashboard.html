@@ -262,7 +262,7 @@
         <select id="addBookingCourt">
           <option value="">Select Court</option>
           <option value="Court One">Court One</option>
-          <option value="Training Court" disabled>Training Court (Coming Soon)</option>
+          <option value="Training Court">Training Court</option>
         </select>
       </div>
       <div class="form-group">
@@ -509,6 +509,7 @@
           <button class="btn-primary" type="button" onclick="renderScheduleModal()">Refresh</button>
         </div>
       </div>
+      <div id="scheduleBookingCounts" class="schedule-booking-counts" aria-live="polite"></div>
       <div id="scheduleGrid" class="schedule-grid"></div>
       <div class="calendar-day-navigation" aria-label="Change calendar date">
         <button class="btn-secondary" type="button" onclick="changeScheduleDay(-1)">← Previous date</button>
