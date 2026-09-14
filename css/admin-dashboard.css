@@ -1532,6 +1532,37 @@ body.modal-open { overflow: hidden; }
   min-width: 180px;
 }
 
+.schedule-booking-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 16px;
+  color: var(--gray-text);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.schedule-booking-counts span {
+  white-space: nowrap;
+}
+
+.schedule-booking-counts strong {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.schedule-booking-counts .court-one-count strong {
+  color: #fbbf24;
+}
+
+.schedule-booking-counts .training-court-count strong {
+  color: #22d3ee;
+}
+
+.schedule-booking-counts .overall-count strong {
+  color: #fb7185;
+}
+
 .schedule-grid {
   display: grid;
   grid-template-columns: 120px repeat(2, minmax(0, 1fr));
@@ -1567,6 +1598,12 @@ body.modal-open { overflow: hidden; }
   color: var(--text-primary);
 }
 
+.schedule-cell.training-court-header {
+  background: rgba(34, 211, 238, 0.12);
+  border-color: rgba(34, 211, 238, 0.35);
+  color: #22d3ee;
+}
+
 .schedule-cell.time-label {
   justify-content: center;
   text-align: center;
@@ -1594,6 +1631,25 @@ body.modal-open { overflow: hidden; }
   background: rgba(245, 158, 11, 0.12);
   border-color: rgba(245, 158, 11, 0.35);
   color: #fbbf24;
+}
+
+.training-court-slot {
+  background: rgba(34, 211, 238, 0.05);
+  border-color: rgba(34, 211, 238, 0.2);
+}
+
+.training-court-slot:hover {
+  border-color: rgba(34, 211, 238, 0.48);
+}
+
+.training-court-slot.slot-booked {
+  background: rgba(34, 211, 238, 0.16);
+  border-color: rgba(34, 211, 238, 0.38);
+}
+
+.training-court-slot.slot-blocked {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
 }
 
 .slot-coming-soon {
@@ -1827,14 +1883,59 @@ body.modal-open { overflow: hidden; }
     max-width: 100%;
   }
 
+  .calendar-modal-content .modal-header {
+    padding: 16px 18px;
+  }
+
+  .calendar-modal-content .modal-body {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .calendar-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
+
   .calendar-date-controls {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
     width: 100%;
-    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .calendar-date-controls button {
+    width: 100%;
+    min-height: 40px;
+    justify-content: center;
+    padding: 8px;
   }
 
   .calendar-date-controls input[type="date"] {
     width: 100%;
-    max-width: 240px;
+    min-width: 0;
+    max-width: none;
+    min-height: 40px;
+  }
+
+  .calendar-date-controls button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .calendar-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .calendar-toolbar-actions button {
+    width: 100%;
+    min-height: 40px;
+    justify-content: center;
+    padding: 8px 6px;
   }
 
   .schedule-grid {
