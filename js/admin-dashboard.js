@@ -12,6 +12,9 @@ let calendarViewDate = new Date();
 let selectedCalendarDate = null;
 let blockedTimeSlots = [];
 const adminLogsStorageKey = 'pickleAdminLogs';
+const activityLogsPerPage = 10;
+let activityLogs = [];
+let activityLogsPage = 1;
 const pendingNotificationState = {
   knownPendingIds: new Set(),
   hasInitialized: false,
@@ -20,6 +23,8 @@ const pendingNotificationState = {
 };
 let pendingAlertAudioContext = null;
 let leaderboardMode = 'monthly';
+let adminBookingSelectedCourt = 'Court One';
+let adminBookingSelectedSlots = new Set();
 
 function toggleSidebar() {
   const sidebar = document.getElementById('adminSidebar');
@@ -70,6 +75,188 @@ function getAdminLogs() {
     console.error('Failed to load admin logs:', err);
     return [];
   }
+}
+
+function escapeActivityLogText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatActivityLogDetails(log) {
+  const details = log.details || 'No details available.';
+  if (typeof details !== 'string' || !details.trim().startsWith('{')) return details;
+
+  try {
+    const parsed = JSON.parse(details);
+    const bookings = Array.isArray(parsed.bookings) ? parsed.bookings : [];
+    const affectedBookings = bookings.slice(0, 2).map(booking => {
+      const date = booking.booking_date || 'No date';
+      const time = booking.booking_time || booking.time_slot || 'No time';
+      const court = booking.court || booking.court_name || 'No court';
+      return `${date} • ${time} • ${court}`;
+    });
+    const moreCount = bookings.length > 2 ? ` +${bookings.length - 2} more` : '';
+    const summary = parsed.summary || 'Activity recorded.';
+    return affectedBookings.length
+      ? `${summary} ${affectedBookings.join(' | ')}${moreCount}`
+      : summary;
+  } catch (err) {
+    return details;
+  }
+}
+
+function getActivityLogBookings(log) {
+  if (!log) return [];
+  if (Array.isArray(log.bookings)) return log.bookings;
+
+  try {
+    const parsed = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+    return Array.isArray(parsed?.bookings) ? parsed.bookings : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function getActivityLogActor(log) {
+  if (log?.actor_name || log?.admin_name) return log.actor_name || log.admin_name;
+  const details = typeof log?.details === 'string' ? log.details : '';
+  const match = details.match(/Action by ([^.]+)\./i);
+  return match ? match[1].trim() : 'Unknown Admin';
+}
+
+function toggleActivityLogDetails(index) {
+  const details = document.getElementById(`activityLogDetails-${index}`);
+  const button = document.querySelector(`[aria-controls="activityLogDetails-${index}"]`);
+  if (!details || !button) return;
+
+  const isOpen = details.classList.toggle('open');
+  button.textContent = isOpen ? 'Hide details' : 'View details';
+  button.setAttribute('aria-expanded', String(isOpen));
+}
+
+function renderActivityLogBookingDetails(log, index) {
+  const bookings = getActivityLogBookings(log);
+  if (!bookings.length) {
+    return '<div class="activity-log-detail-empty">No booking details available.</div>';
+  }
+
+  return bookings.map((booking, bookingIndex) => `
+    <div class="activity-log-booking-detail">
+      <span class="activity-log-booking-number">Booking ${bookingIndex + 1}</span>
+      ${booking.action ? `
+        <dl>
+          <div><dt>Date</dt><dd>${escapeActivityLogText(booking.booking_date || 'N/A')}</dd></div>
+          <div><dt>Court Name</dt><dd>${escapeActivityLogText(booking.court || booking.court_name || 'N/A')}</dd></div>
+          <div><dt>Time Slot</dt><dd>${escapeActivityLogText(booking.booking_time || booking.time_slot || 'N/A')}</dd></div>
+          <div><dt>Status</dt><dd class="activity-log-status-${booking.action === 'blocked' ? 'blocked' : 'unblocked'}">${escapeActivityLogText(booking.action)}</dd></div>
+        </dl>
+      ` : `
+        <dl>
+          <div><dt>Name</dt><dd>${escapeActivityLogText(booking.customer_name || booking.name || 'N/A')}</dd></div>
+          <div><dt>Court Name</dt><dd>${escapeActivityLogText(booking.court || booking.court_name || 'N/A')}</dd></div>
+          <div><dt>Number</dt><dd>${escapeActivityLogText(booking.phone_number || booking.phone || 'N/A')}</dd></div>
+          <div><dt>Time Slot</dt><dd>${escapeActivityLogText(booking.booking_time || booking.time_slot || 'N/A')}</dd></div>
+        </dl>
+      `}
+    </div>
+  `).join('');
+}
+
+async function loadActivityLogs() {
+  const list = document.getElementById('activityLogList');
+  const status = document.getElementById('activityLogsStatus');
+  if (!list) return;
+
+  list.innerHTML = '<div class="activity-log-empty">Loading activity logs...</div>';
+
+  let logs = getAdminLogs();
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('admin_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (!error && Array.isArray(data)) logs = data;
+    } catch (err) {
+      console.warn('Could not load activity logs from Supabase:', err);
+    }
+  }
+
+  activityLogs = logs;
+  activityLogsPage = 1;
+  renderActivityLogs();
+  if (status) status.textContent = `${logs.length} log${logs.length === 1 ? '' : 's'}`;
+}
+
+function renderActivityLogs() {
+  const list = document.getElementById('activityLogList');
+  const pagination = document.getElementById('activityLogsPagination');
+  if (!list || !pagination) return;
+
+  if (!activityLogs.length) {
+    list.innerHTML = '<div class="activity-log-empty">No activity logs yet.</div>';
+    pagination.innerHTML = '';
+    return;
+  }
+
+  const totalPages = Math.ceil(activityLogs.length / activityLogsPerPage);
+  activityLogsPage = Math.min(Math.max(activityLogsPage, 1), totalPages);
+  const start = (activityLogsPage - 1) * activityLogsPerPage;
+  const visibleLogs = activityLogs.slice(start, start + activityLogsPerPage);
+
+  list.innerHTML = visibleLogs.map((log, visibleIndex) => {
+    const logIndex = start + visibleIndex;
+    const createdAtValue = log.created_at || log.createdAt;
+    const createdAt = createdAtValue ? new Date(createdAtValue).toLocaleString() : 'Unknown date';
+    const type = String(log.type || 'info').toLowerCase();
+    const badgeClass = ['deleted', 'expired', 'blocked', 'confirmed'].includes(type) ? type : 'info';
+    return `
+      <article class="activity-log-item">
+        <span class="activity-log-badge ${badgeClass}">${escapeActivityLogText(type)}</span>
+        <div>
+          <h4>${escapeActivityLogText(log.title || 'Admin action')}</h4>
+          <div class="activity-log-actor"><span>Action by:</span> ${escapeActivityLogText(getActivityLogActor(log))}</div>
+          <p>${escapeActivityLogText(formatActivityLogDetails(log))}</p>
+          <button class="activity-log-details-toggle" type="button" aria-controls="activityLogDetails-${logIndex}" aria-expanded="false" onclick="toggleActivityLogDetails(${logIndex})">View details</button>
+          <div class="activity-log-details" id="activityLogDetails-${logIndex}">
+            ${renderActivityLogBookingDetails(log, logIndex)}
+          </div>
+        </div>
+        <time class="activity-log-time">${escapeActivityLogText(createdAt)}</time>
+      </article>
+    `;
+  }).join('');
+
+  pagination.innerHTML = `
+    <button class="btn-secondary" type="button" onclick="changeActivityLogsPage(-1)" ${activityLogsPage === 1 ? 'disabled' : ''}>Previous</button>
+    <span class="modal-subtitle">Page ${activityLogsPage} of ${totalPages}</span>
+    <button class="btn-secondary" type="button" onclick="changeActivityLogsPage(1)" ${activityLogsPage === totalPages ? 'disabled' : ''}>Next</button>
+  `;
+}
+
+function changeActivityLogsPage(step) {
+  const totalPages = Math.ceil(activityLogs.length / activityLogsPerPage);
+  const nextPage = activityLogsPage + step;
+  if (nextPage < 1 || nextPage > totalPages) return;
+  activityLogsPage = nextPage;
+  renderActivityLogs();
+}
+
+function openActivityLogsModal() {
+  const modal = document.getElementById('activityLogsModal');
+  if (!modal) return;
+  modal.classList.add('open');
+  loadActivityLogs();
+}
+
+function closeActivityLogsModal() {
+  const modal = document.getElementById('activityLogsModal');
+  if (modal) modal.classList.remove('open');
 }
 
 async function requestPendingNotificationPermission() {
@@ -1687,7 +1874,7 @@ function refreshCalendarView() {
 }
 
 function getScheduleCourts() {
-  return ['Court One', 'Training Court'];
+  return ['Court One', 'Training Area'];
 }
 
 function onScheduleDateChange(event) {
@@ -1746,12 +1933,12 @@ function renderScheduleModal() {
 
   const bookings = getBookingsForDate(selectedCalendarDate);
   const courtOneBookings = bookings.filter(booking => (booking.court || booking.court_name) === 'Court One');
-  const trainingCourtBookings = bookings.filter(booking => (booking.court || booking.court_name) === 'Training Court');
+  const trainingCourtBookings = bookings.filter(booking => (booking.court || booking.court_name) === 'Training Area');
   const counts = document.getElementById('scheduleBookingCounts');
   if (counts) {
     counts.innerHTML = `
       <span class="court-one-count">Court 1: <strong>${courtOneBookings.length}</strong></span>
-      <span class="training-court-count">Training Court: <strong>${trainingCourtBookings.length}</strong></span>
+      <span class="training-court-count">Training Area: <strong>${trainingCourtBookings.length}</strong></span>
       <span class="overall-count">Overall: <strong>${bookings.length}</strong></span>
     `;
   }
@@ -1777,8 +1964,8 @@ function renderScheduleModal() {
   headerRow.appendChild(headerTime);
   courts.forEach(court => {
     const cell = document.createElement('div');
-    cell.className = `schedule-cell header${court === 'Training Court' ? ' training-court-header' : ''}`;
-    cell.textContent = court === 'Court One' ? 'Court 1' : 'Training Court';
+    cell.className = `schedule-cell header${court === 'Training Area' ? ' training-court-header' : ''}`;
+    cell.textContent = court === 'Court One' ? 'Court 1' : 'Training Area';
     headerRow.appendChild(cell);
   });
   grid.appendChild(headerRow);
@@ -1794,7 +1981,7 @@ function renderScheduleModal() {
     courts.forEach(court => {
       const slotCell = document.createElement('button');
       slotCell.type = 'button';
-      slotCell.className = `schedule-cell slot-cell${court === 'Training Court' ? ' training-court-slot' : ''}`;
+      slotCell.className = `schedule-cell slot-cell${court === 'Training Area' ? ' training-court-slot' : ''}`;
       const slotBookings = bookingsByCourtHour[court]?.[hour] || [];
       if (blockedByCourtHour.has(`${court}|${hour}`)) {
         slotCell.classList.add('slot-blocked');
@@ -1859,7 +2046,7 @@ function openCalendarModal(date = new Date()) {
 
 function getBlockTimeOptions() {
   const options = [];
-  ['Court One', 'Training Court'].forEach(court => {
+  ['Court One', 'Training Area'].forEach(court => {
     for (let hour = 0; hour < 24; hour++) {
       options.push({ court, hour, time_slot: formatScheduleHour(hour) });
     }
@@ -1896,7 +2083,7 @@ async function loadBlockTimesForDate() {
   courtOneColumn.innerHTML = '<h4>Court 1</h4>';
   const trainingColumn = document.createElement('div');
   trainingColumn.className = 'block-time-court-column';
-  trainingColumn.innerHTML = '<h4>Training Court</h4>';
+  trainingColumn.innerHTML = '<h4>Training Area</h4>';
 
   getBlockTimeOptions().forEach(option => {
     const isBooked = bookedKeys.has(`${option.court}|${option.hour}`);
@@ -2194,6 +2381,27 @@ function updateEarnings() {
   });
   const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
 
+  const getCourtName = booking => {
+    const court = String(booking.court || booking.court_name || '').trim().toLowerCase();
+    if (court.includes('training') || court.includes('court two') || court.includes('court 2')) return 'Training Area';
+    return 'Court One';
+  };
+  const courtSales = monthlyBookings.reduce((totals, booking) => {
+    const court = getCourtName(booking);
+    const amount = parseFloat(booking.price) || parseFloat(booking.rate) || 0;
+    totals[court].sales += amount;
+    totals[court].bookings += 1;
+    return totals;
+  }, {
+    'Court One': { sales: 0, bookings: 0 },
+    'Training Area': { sales: 0, bookings: 0 }
+  });
+  const highestSales = Math.max(courtSales['Court One'].sales, courtSales['Training Area'].sales);
+  const topCourt = highestSales > 0
+    ? (courtSales['Court One'].sales >= courtSales['Training Area'].sales ? 'Court 1' : 'Training Area')
+    : 'No sales yet';
+  const averageBookingValue = monthlyBookings.length ? monthlyEarnings / monthlyBookings.length : 0;
+
   // Pending payments from all bookings
   const pendingBookings = bookingsToUse.filter(b => b.status === 'pending');
   const pendingAmount = pendingBookings.reduce((sum, b) => sum + (parseFloat(b.price) || parseFloat(b.rate) || 0), 0);
@@ -2207,6 +2415,25 @@ function updateEarnings() {
 
   document.getElementById('monthlyEarnings').textContent = '₱' + monthlyEarnings.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('monthlyCount').textContent = `${monthlyBookings.length} booking${monthlyBookings.length !== 1 ? 's' : ''}`;
+
+  const formatInsightCurrency = value => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const updateInsightText = (id, value) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+  };
+  updateInsightText('salesInsightsPeriod', `${selectedDate.toLocaleString('en-US', { month: 'long', year: 'numeric' })} sales by court`);
+  updateInsightText('courtOneSales', formatInsightCurrency(courtSales['Court One'].sales));
+  updateInsightText('courtOneSalesCount', `${courtSales['Court One'].bookings} booking${courtSales['Court One'].bookings !== 1 ? 's' : ''}`);
+  updateInsightText('trainingCourtSales', formatInsightCurrency(courtSales['Training Area'].sales));
+  updateInsightText('trainingCourtSalesCount', `${courtSales['Training Area'].bookings} booking${courtSales['Training Area'].bookings !== 1 ? 's' : ''}`);
+  updateInsightText('topSalesCourt', topCourt);
+  updateInsightText('averageBookingValue', `Average booking: ${formatInsightCurrency(averageBookingValue)}`);
+  updateInsightText('courtOneBarValue', formatInsightCurrency(courtSales['Court One'].sales));
+  updateInsightText('trainingCourtBarValue', formatInsightCurrency(courtSales['Training Area'].sales));
+  const courtOneBar = document.getElementById('courtOneSalesBar');
+  const trainingCourtBar = document.getElementById('trainingCourtSalesBar');
+  if (courtOneBar) courtOneBar.style.width = highestSales ? `${(courtSales['Court One'].sales / highestSales) * 100}%` : '0%';
+  if (trainingCourtBar) trainingCourtBar.style.width = highestSales ? `${(courtSales['Training Area'].sales / highestSales) * 100}%` : '0%';
 
   document.getElementById('pendingAmount').textContent = '₱' + pendingAmount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('pendingCount').textContent = `${pendingBookings.length} booking${pendingBookings.length !== 1 ? 's' : ''}`;
@@ -2279,13 +2506,19 @@ function openAddBookingModal() {
 
   if (customerNameInput) customerNameInput.value = '';
   if (phoneInput) phoneInput.value = '';
-  if (timeInput) timeInput.value = '';
+  if (timeInput) timeInput.innerHTML = '<option value="">Select an available time</option>';
+  adminBookingSelectedSlots.clear();
+  const reviewPanel = document.getElementById('adminBookingReview');
+  if (reviewPanel) reviewPanel.hidden = true;
+  const reviewButton = document.getElementById('reviewAdminBookingBtn');
+  if (reviewButton) reviewButton.hidden = false;
   if (courtSelect) courtSelect.value = 'Court One';
   if (statusSelect) statusSelect.value = 'paid';
   if (notesInput) notesInput.value = '';
 
   updateAddBookingRate();
   modal.classList.add('open');
+  loadAdminBookingAvailability();
   setTimeout(() => customerNameInput?.focus(), 120);
 }
 
@@ -2300,8 +2533,160 @@ function updateAddBookingRate() {
   if (!dateInput || !rateValue) return;
 
   const timeInput = document.getElementById('addBookingTime');
-  const rate = getBookingRateForDate(dateInput.value, timeInput?.value || '');
-  rateValue.textContent = `₱${rate}`;
+  const totalRate = [...adminBookingSelectedSlots].reduce((sum, value) => {
+    const separatorIndex = value.indexOf('|');
+    const court = value.slice(0, separatorIndex);
+    const timeSlot = value.slice(separatorIndex + 1);
+    return sum + (court === 'Training Area' ? 350 : getBookingRateForDate(dateInput.value, timeSlot));
+  }, 0);
+  rateValue.textContent = `₱${totalRate}`;
+}
+
+async function loadAdminBookingAvailability() {
+  const date = document.getElementById('addBookingDate')?.value;
+  const courtSelect = document.getElementById('addBookingCourt');
+  const court = courtSelect?.value;
+  const timeSelect = document.getElementById('addBookingTime');
+  const availability = document.getElementById('adminBookingAvailability');
+  if (!date || !court || !timeSelect || !availability || !supabaseClient) return;
+
+  timeSelect.innerHTML = '<option value="">Loading available times...</option>';
+  availability.innerHTML = '<span class="availability-loading">Checking live availability...</span>';
+
+  const [{ data: bookings, error: bookingError }, { data: blockedSlots, error: blockedError }] = await Promise.all([
+    supabaseClient.from('bookings').select('status, court, court_name, time_slot, booking_time').eq('booking_date', date),
+    supabaseClient.from('blocked_time_slots').select('court, time_slot').eq('blocked_date', date)
+  ]);
+  if (bookingError || blockedError) {
+    console.error('Failed to load admin booking availability:', bookingError || blockedError);
+    timeSelect.innerHTML = '<option value="">Availability unavailable</option>';
+    availability.innerHTML = '<span class="availability-error">Unable to check availability.</span>';
+    return;
+  }
+
+  const activeStatuses = new Set(['pending', 'paid', 'confirmed', 'completed', 'unpaid']);
+  const selectedDate = new Date(`${date}T00:00:00`);
+  const today = new Date();
+  const isPastDate = selectedDate < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const isToday = selectedDate.toDateString() === today.toDateString();
+  const formatSlotTime = hour => {
+    const start = new Date(2000, 0, 1, hour);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const format = value => value.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return `${format(start)} - ${format(end)}`;
+  };
+  timeSelect.innerHTML = '<option value="">Select an available time</option>';
+  availability.innerHTML = '';
+  ['Court One', 'Training Area'].forEach(availableCourt => {
+    const column = document.createElement('div');
+    column.className = 'admin-booking-court-column';
+    const heading = document.createElement('h4');
+    heading.textContent = availableCourt === 'Court One' ? 'Court 1' : 'Training Area';
+    column.appendChild(heading);
+    const normalizedCourt = availableCourt.toLowerCase();
+    const statusByHour = new Map();
+    (bookings || []).forEach(booking => {
+      if (!activeStatuses.has(String(booking.status || '').toLowerCase())) return;
+      if (String(booking.court || booking.court_name || '').trim().toLowerCase() !== normalizedCourt) return;
+      const hour = getSlotStartMinutes(booking.time_slot || booking.booking_time);
+      if (Number.isFinite(hour)) statusByHour.set(hour, String(booking.status || '').toLowerCase() === 'pending' ? 'Pending' : 'Booked');
+    });
+    const blockedHours = new Set((blockedSlots || [])
+      .filter(slot => String(slot.court || '').trim().toLowerCase() === normalizedCourt)
+      .map(slot => getSlotStartMinutes(slot.time_slot)));
+
+    for (let hour = 0; hour < 24; hour++) {
+      const minutes = hour * 60;
+      const timeSlot = formatSlotTime(hour);
+      const status = statusByHour.get(minutes) || (blockedHours.has(minutes) ? 'Blocked' : isPastDate || (isToday && minutes <= today.getHours() * 60) ? 'Past' : 'Available');
+      const option = document.createElement('option');
+      option.value = timeSlot;
+      option.textContent = `${timeSlot} · ${status}`;
+      option.disabled = status !== 'Available';
+      timeSelect.appendChild(option);
+
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = `admin-booking-slot ${status.toLowerCase()}`;
+      row.dataset.court = availableCourt;
+      row.dataset.time = timeSlot;
+      row.disabled = status !== 'Available';
+      row.innerHTML = `<span>${timeSlot}</span><strong>${status}</strong>`;
+      row.onclick = () => {
+        const slotKey = `${availableCourt}|${timeSlot}`;
+        if (adminBookingSelectedSlots.has(slotKey)) adminBookingSelectedSlots.delete(slotKey);
+        else adminBookingSelectedSlots.add(slotKey);
+        row.classList.toggle('selected', adminBookingSelectedSlots.has(slotKey));
+        updateAddBookingRate();
+      };
+      row.classList.toggle('selected', adminBookingSelectedSlots.has(`${availableCourt}|${timeSlot}`));
+      column.appendChild(row);
+    }
+    availability.appendChild(column);
+  });
+  updateAddBookingRate();
+}
+
+function getAdminBookingReviewData() {
+  const customerName = document.getElementById('addBookingCustomerName')?.value?.trim() || '';
+  const bookingDate = document.getElementById('addBookingDate')?.value || '';
+  const notes = document.getElementById('addBookingNotes')?.value?.trim() || '';
+  const selections = [...adminBookingSelectedSlots].map(value => {
+    const separatorIndex = value.indexOf('|');
+    const court = value.slice(0, separatorIndex);
+    const timeSlot = formatTimeInputValue(value.slice(separatorIndex + 1));
+    return { court, timeSlot };
+  });
+  return { customerName, bookingDate, notes, selections };
+}
+
+function escapeAdminReviewText(value) {
+  return String(value || '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[character]));
+}
+
+function reviewAdminBooking() {
+  const review = getAdminBookingReviewData();
+  if (!review.customerName || !review.bookingDate || !review.selections.length) {
+    showToast('Enter a Facebook name, date, and select at least one time slot');
+    return;
+  }
+
+  const total = review.selections.reduce((sum, selection) => sum + (selection.court === 'Training Area'
+    ? 350
+    : getBookingRateForDate(review.bookingDate, selection.timeSlot)), 0);
+  const courtOneTimes = review.selections
+    .filter(selection => selection.court === 'Court One')
+    .map(selection => selection.timeSlot);
+  const trainingCourtTimes = review.selections
+    .filter(selection => selection.court === 'Training Area')
+    .map(selection => selection.timeSlot);
+  const details = document.getElementById('adminBookingReviewDetails');
+  if (details) {
+    details.innerHTML = `
+      <div><span>Facebook Name</span><strong>${escapeAdminReviewText(review.customerName)}</strong></div>
+      <div><span>Date</span><strong>${escapeAdminReviewText(review.bookingDate)}</strong></div>
+      <div class="review-court-row"><span>Court 1:</span><strong>${courtOneTimes.length ? courtOneTimes.map(escapeAdminReviewText).join('<br>') : 'None selected'}</strong></div>
+      <div class="review-court-row"><span>Training Area:</span><strong>${trainingCourtTimes.length ? trainingCourtTimes.map(escapeAdminReviewText).join('<br>') : 'None selected'}</strong></div>
+      <div><span>Total</span><strong>₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+    `;
+  }
+  const reviewPanel = document.getElementById('adminBookingReview');
+  if (reviewPanel) reviewPanel.hidden = false;
+  const reviewButton = document.getElementById('reviewAdminBookingBtn');
+  if (reviewButton) reviewButton.hidden = true;
+}
+
+function editAdminBookingSelection() {
+  const reviewPanel = document.getElementById('adminBookingReview');
+  if (reviewPanel) reviewPanel.hidden = true;
+  const reviewButton = document.getElementById('reviewAdminBookingBtn');
+  if (reviewButton) reviewButton.hidden = false;
 }
 
 async function submitAddBooking() {
@@ -2313,45 +2698,102 @@ async function submitAddBooking() {
   const customerName = document.getElementById('addBookingCustomerName')?.value?.trim() || '';
   const phone = document.getElementById('addBookingPhone')?.value?.trim() || '';
   const bookingDate = document.getElementById('addBookingDate')?.value || '';
-  const bookingTime = document.getElementById('addBookingTime')?.value || '';
-  const timeSlot = bookingTime ? formatTimeInputValue(bookingTime) : '';
-  const court = document.getElementById('addBookingCourt')?.value || '';
-  const status = document.getElementById('addBookingStatus')?.value || 'paid';
+  const selectedBookings = [...adminBookingSelectedSlots].map(value => {
+    const separatorIndex = value.indexOf('|');
+    return {
+      court: value.slice(0, separatorIndex),
+      timeSlot: formatTimeInputValue(value.slice(separatorIndex + 1))
+    };
+  });
+  const status = 'pending';
   const notes = document.getElementById('addBookingNotes')?.value?.trim() || '';
 
   const missing = [];
   if (!customerName) missing.push('name');
-  if (!phone) missing.push('phone');
   if (!bookingDate) missing.push('date');
-  if (!timeSlot) missing.push('time');
-  if (!court) missing.push('court');
+  if (!selectedBookings.length) missing.push('time');
 
   if (missing.length > 0) {
     showToast(`Please fill in ${missing.join(', ')}.`);
     return;
   }
 
-  const price = getBookingRateForDate(bookingDate, timeSlot);
-  const referenceCode = `PKL-${Date.now().toString(36).toUpperCase()}`;
-
-  const payload = {
-    reference_code: referenceCode,
-    customer_name: customerName,
-    phone_number: phone,
-    booking_date: bookingDate,
-    time_slot: timeSlot,
-    booking_time: timeSlot,
-    court,
-    court_name: court,
-    status,
-    price,
-    rate: price,
-    notes: notes || null,
-    created_at: new Date().toISOString()
-  };
+  const bookingStartMinutes = selectedBookings.map(booking => getSlotStartMinutes(booking.timeSlot));
+  if (bookingStartMinutes.some(minutes => !Number.isFinite(minutes) || minutes >= 24 * 60)) {
+    showToast('Select a valid booking time');
+    return;
+  }
 
   try {
-    const { error } = await supabaseClient.from('bookings').insert([payload]);
+    const [{ data: existingBookings, error: bookingError }, { data: blockedSlots, error: blockedError }] = await Promise.all([
+      supabaseClient
+        .from('bookings')
+        .select('id, status, court, court_name, time_slot, booking_time')
+        .eq('booking_date', bookingDate),
+      supabaseClient
+        .from('blocked_time_slots')
+        .select('court, time_slot')
+        .eq('blocked_date', bookingDate)
+    ]);
+
+    if (bookingError || blockedError) {
+      console.error('Failed to verify admin booking availability:', bookingError || blockedError);
+      showToast('Could not verify slot availability');
+      return;
+    }
+
+    const activeStatuses = new Set(['pending', 'paid', 'confirmed', 'completed', 'unpaid']);
+    for (let index = 0; index < selectedBookings.length; index++) {
+      const { court, timeSlot } = selectedBookings[index];
+      const normalizedCourt = court.trim().toLowerCase();
+      const startMinutes = bookingStartMinutes[index];
+      const alreadyBooked = (existingBookings || []).some(existingBooking =>
+        activeStatuses.has(String(existingBooking.status || '').toLowerCase()) &&
+        String(existingBooking.court || existingBooking.court_name || '').trim().toLowerCase() === normalizedCourt &&
+        getSlotStartMinutes(existingBooking.time_slot || existingBooking.booking_time) === startMinutes
+      );
+      if (alreadyBooked) {
+        showToast(`${court} is already booked for ${timeSlot}`);
+        return;
+      }
+
+      const isBlocked = (blockedSlots || []).some(slot =>
+        String(slot.court || '').trim().toLowerCase() === normalizedCourt &&
+        getSlotStartMinutes(slot.time_slot) === startMinutes
+      );
+      if (isBlocked) {
+        showToast(`${court} is blocked for ${timeSlot}`);
+        return;
+      }
+    }
+  } catch (availabilityError) {
+    console.error('Admin booking availability check failed:', availabilityError);
+    showToast('Could not verify slot availability');
+    return;
+  }
+
+  const referenceCode = `PKL-${Date.now().toString(36).toUpperCase()}`;
+  const payloads = selectedBookings.map(({ court, timeSlot }) => {
+    const price = court === 'Training Area' ? 350 : getBookingRateForDate(bookingDate, timeSlot);
+    return {
+      reference_code: referenceCode,
+      customer_name: customerName,
+      phone_number: phone,
+      booking_date: bookingDate,
+      time_slot: timeSlot,
+      booking_time: timeSlot,
+      court,
+      court_name: court,
+      status,
+      price,
+      rate: price,
+      notes: notes || null,
+      created_at: new Date().toISOString()
+    };
+  });
+
+  try {
+    const { error } = await supabaseClient.from('bookings').insert(payloads);
     if (error) throw error;
 
     showToast('Booking added successfully');
@@ -2424,14 +2866,11 @@ function buildPageButtons(totalPages, currentPage) {
   const maxButtons = 20;
 
   if (totalPages <= maxButtons) {
-    for (let page = 1; page <= totalPages; page++) {
-      buttons.push(page);
-    }
+    for (let page = 1; page <= totalPages; page++) buttons.push(page);
     return buttons;
   }
 
-  const visible = new Set([1, 2, totalPages - 1, totalPages]);
-  visible.add(currentPage);
+  const visible = new Set([1, 2, totalPages - 1, totalPages, currentPage]);
   if (currentPage - 1 > 1) visible.add(currentPage - 1);
   if (currentPage + 1 < totalPages) visible.add(currentPage + 1);
   if (currentPage - 2 > 1) visible.add(currentPage - 2);
@@ -2440,19 +2879,11 @@ function buildPageButtons(totalPages, currentPage) {
   const sorted = Array.from(visible).filter(page => page >= 1 && page <= totalPages).sort((a, b) => a - b);
   const expanded = [];
   let last = 0;
-
   sorted.forEach(page => {
-    if (page - last > 1) {
-      if (page - last === 2) {
-        expanded.push(last + 1);
-      } else {
-        expanded.push('...');
-      }
-    }
+    if (page - last > 1) expanded.push(page - last === 2 ? last + 1 : '...');
     expanded.push(page);
     last = page;
   });
-
   return expanded;
 }
 
