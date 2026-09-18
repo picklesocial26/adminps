@@ -44,7 +44,8 @@
   </div>
   <div class="sidebar-section-label">Tools</div>
   <div class="sidebar-nav">
-    <a class="sidebar-link" href="Logs.html"><span class="sidebar-icon">≡</span>Activity Logs</a>
+    <button class="sidebar-link sidebar-button" type="button" onclick="openActivityLogsModal(); closeSidebar()"><span class="sidebar-icon">≡</span>Activity Logs</button>
+    <button class="sidebar-link sidebar-button" type="button" onclick="openAddBookingModal(); closeSidebar()"><span class="sidebar-icon">＋</span>Admin Book</button>
     <button class="sidebar-link sidebar-button" type="button" onclick="openBlockTimesModal(); closeSidebar()"><span class="sidebar-icon">◷</span>Block Timeslots</button>
     <button class="sidebar-link sidebar-button" type="button" onclick="openExtendBookingModal(); closeSidebar()"><span class="sidebar-icon">＋</span>Extend Booking Time</button>
     <button class="sidebar-link sidebar-button expired-bookings-link" type="button" onclick="openExpiredBookingsModal(); closeSidebar()"><span class="sidebar-icon expired-booking-icon" aria-hidden="true"></span>Expired Bookings</button>
@@ -237,46 +238,43 @@
 <div class="modal" id="addBookingModal">
   <div class="modal-content">
     <div class="modal-header">
-      <h3>Add Booking</h3>
+      <h3>Admin Book</h3>
       <button class="modal-close" onclick="closeAddBookingModal()">×</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>Customer Name</label>
-        <input type="text" id="addBookingCustomerName" placeholder="Enter customer name">
+        <label for="addBookingCustomerName">Facebook Name</label>
+        <input type="text" id="addBookingCustomerName" placeholder="Enter Facebook Name" required>
       </div>
       <div class="form-group">
-        <label>Phone Number</label>
-        <input type="text" id="addBookingPhone" placeholder="Enter phone number">
+        <label for="addBookingPhone">Phone Number <span class="optional-label">(optional)</span></label>
+        <input type="text" id="addBookingPhone" placeholder="Phone number: optional">
       </div>
       <div class="form-group">
         <label>Booking Date</label>
-        <input type="date" id="addBookingDate" onchange="updateAddBookingRate()">
+        <input type="date" id="addBookingDate" onchange="loadAdminBookingAvailability()">
       </div>
       <div class="form-group">
-        <label>Time</label>
-        <input type="text" id="addBookingTime" placeholder="e.g. 11:00 PM or 23:00" oninput="updateAddBookingRate()">
-      </div>
-      <div class="form-group">
-        <label>Court</label>
-        <select id="addBookingCourt">
-          <option value="">Select Court</option>
-          <option value="Court One">Court One</option>
-          <option value="Training Court">Training Court</option>
+        <label for="addBookingTime">Booking Time</label>
+        <select id="addBookingTime" class="slot-value-source" multiple onchange="updateAddBookingRate()">
+          <option value="">Select one or more available times</option>
         </select>
+        <div id="adminBookingAvailability" class="admin-booking-availability" aria-live="polite"></div>
+      </div>
+      <div class="form-group">
+        <input type="hidden" id="addBookingCourt" value="Court One">
       </div>
       <div class="form-group">
         <label>Status</label>
-        <select id="addBookingStatus">
-          <option value="paid">Paid</option>
+        <select id="addBookingStatus" disabled>
           <option value="pending">Pending</option>
-          <option value="unpaid">Unpaid</option>
         </select>
+        <small class="form-hint">Admin bookings are saved as pending until confirmed.</small>
       </div>
       <div class="form-group">
         <label>Rate</label>
         <div class="rate-display" id="addBookingRateValue">₱500</div>
-        <div class="rate-hint">Monday–Thursday ₱500 · Friday–Sunday ₱550</div>
+        <div class="rate-hint">Court 1: Monday–Thursday ₱500 · Friday–Sunday ₱550 · Training Area: ₱350</div>
       </div>
       <div class="form-group">
         <label>Notes</label>
@@ -285,7 +283,28 @@
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeAddBookingModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitAddBooking()">Save Booking</button>
+      <button class="btn-primary" id="reviewAdminBookingBtn" onclick="reviewAdminBooking()">Review Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Booking Review Modal -->
+<div class="modal admin-booking-review-modal" id="adminBookingReview" role="dialog" aria-modal="true" aria-labelledby="adminBookingReviewTitle" hidden>
+  <div class="modal-content admin-booking-review-content">
+    <div class="modal-header">
+      <div>
+        <span class="calendar-modal-eyebrow">Admin Book</span>
+        <h3 id="adminBookingReviewTitle">Review Booking</h3>
+      </div>
+      <button class="modal-close" type="button" onclick="editAdminBookingSelection()" aria-label="Close booking review">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="admin-booking-review-status">Pending</div>
+      <div id="adminBookingReviewDetails" class="admin-booking-review-details"></div>
+    </div>
+    <div class="modal-footer admin-booking-review-actions">
+      <button type="button" class="btn-secondary" onclick="editAdminBookingSelection()">Edit Selection</button>
+      <button type="button" class="btn-primary" onclick="submitAddBooking()">Confirm & Save</button>
     </div>
   </div>
 </div>
@@ -421,6 +440,42 @@
           <div class="summary-value" id="monthlyCount">0</div>
         </div>
       </div>
+      <section class="overview-insights" aria-labelledby="salesInsightsTitle">
+        <div class="overview-insights-header">
+          <div>
+            <h4 id="salesInsightsTitle">Sales Insights</h4>
+            <p id="salesInsightsPeriod">Monthly sales by court</p>
+          </div>
+          <span class="insights-badge">By court</span>
+        </div>
+        <div class="insight-stat-grid">
+          <div class="insight-stat court-one-insight">
+            <span>Court 1 sales</span>
+            <strong id="courtOneSales">₱0.00</strong>
+            <small id="courtOneSalesCount">0 bookings</small>
+          </div>
+          <div class="insight-stat training-court-insight">
+            <span>Training Area sales</span>
+            <strong id="trainingCourtSales">₱0.00</strong>
+            <small id="trainingCourtSalesCount">0 bookings</small>
+          </div>
+          <div class="insight-stat overall-insight">
+            <span>Top court</span>
+            <strong id="topSalesCourt">No sales yet</strong>
+            <small id="averageBookingValue">Average booking: ₱0.00</small>
+          </div>
+        </div>
+        <div class="sales-bar-chart" aria-label="Sales by court bar graph">
+          <div class="sales-bar-row">
+            <div class="sales-bar-label"><span>Court 1</span><strong id="courtOneBarValue">₱0.00</strong></div>
+            <div class="sales-bar-track"><div class="sales-bar-fill court-one-bar" id="courtOneSalesBar"></div></div>
+          </div>
+          <div class="sales-bar-row">
+            <div class="sales-bar-label"><span>Training Area</span><strong id="trainingCourtBarValue">₱0.00</strong></div>
+            <div class="sales-bar-track"><div class="sales-bar-fill training-court-bar" id="trainingCourtSalesBar"></div></div>
+          </div>
+        </div>
+      </section>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeEarningsModal()">Close</button>
@@ -606,6 +661,30 @@
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeExpiredBookingsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Activity Logs Modal -->
+<div class="modal" id="activityLogsModal" role="dialog" aria-modal="true" aria-labelledby="activityLogsModalTitle" onclick="if (event.target === this) closeActivityLogsModal()">
+  <div class="modal-content activity-logs-modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <h3 id="activityLogsModalTitle">Activity logs</h3>
+        <p class="modal-subtitle">Recent booking and availability changes.</p>
+      </div>
+      <button class="modal-close" type="button" onclick="closeActivityLogsModal()" aria-label="Close activity logs">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="activity-logs-toolbar">
+        <span class="modal-subtitle" id="activityLogsStatus" aria-live="polite">Loading logs...</span>
+        <button class="btn-secondary" type="button" onclick="loadActivityLogs()">Refresh</button>
+      </div>
+      <div class="activity-log-list" id="activityLogList"></div>
+      <div class="activity-logs-pagination" id="activityLogsPagination"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" type="button" onclick="closeActivityLogsModal()">Close</button>
     </div>
   </div>
 </div>
