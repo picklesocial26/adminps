@@ -377,7 +377,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     '11:00 PM - 12:00 AM'
   ];
 
-  const COURTS = ['Court One', 'Training Court'];
+  const COURTS = ['Court One', 'Training Area'];
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -515,14 +515,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const isPendingActive = isPendingTimerActive(key);
 
-        if (court === 'Training Court') {
-          btn.classList.add('slot-coming-soon');
-          btn.textContent = 'Coming Soon';
-          btn.disabled = true;
-        }
-
-        // If the slot is booked in Supabase, mark as booked and show initials
-        else if (bookedSlots[key]) {
+        // If the slot is booked or blocked in Supabase, mark it unavailable.
+        if (bookedSlots[key]) {
           btn.classList.add('slot-booked');
           btn.textContent = getInitials(bookedSlots[key]);
           btn.disabled = true;
@@ -906,7 +900,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
       
       let courtSections = '';
-      const courtOrder = ['Court One', 'Training Court'];
+      const courtOrder = ['Court One', 'Training Area'];
       const timeEmojis = ['🕚', '🕛', '🕐', '🕑', '', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'];
       let emojiIndex = 0;
       
