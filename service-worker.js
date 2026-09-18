@@ -1,5 +1,5 @@
-const SUPABASE_URL = 'https://mpkmtcdsubopnrpyqwel.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wa210Y2RzdWJvcG5ycHlxd2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NjI3MzQsImV4cCI6MjEwMTIzODczNH0.jLAVUE1Ixl6aLVqAcaHR3olwFWAvtDjV9u2vrJDTBoQ';
+const SUPABASE_URL = 'https://nozisfmqzkeywefrqkok.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_v1UEpS84vNTTzpz-egAn4g_1QPXC7IB';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
