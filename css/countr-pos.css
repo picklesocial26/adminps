@@ -218,6 +218,8 @@ label{font-size:12px;font-weight:600;color:var(--ink-soft);display:block;margin-
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 
 table{width:100%;border-collapse:collapse;} 
+.sales-pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 18px;border-top:1px solid var(--border);}
+.sales-pagination[hidden]{display:none;}
 th{
   text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-soft);
   font-weight:600;padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap;
