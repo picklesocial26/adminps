@@ -4,6 +4,6 @@
   Get them from Supabase Project Settings → API.
 */
 window.SUPABASE_CONFIG = window.SUPABASE_CONFIG || {
-  url: 'https://nozisfmqzkeywefrqkok.supabase.co',
-  anonKey: 'sb_publishable_v1UEpS84vNTTzpz-egAn4g_1QPXC7IB'
+  url: 'https://mpkmtcdsubopnrpyqwel.supabase.co',
+  anonKey: 'sb_publishable_UL5Bm_SqkJTmRSmcO_NdRA_1qoOksRk'
 };
