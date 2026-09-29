@@ -268,6 +268,11 @@
             </thead>
             <tbody id="salesTableBody"></tbody>
           </table>
+          <div class="sales-pagination" id="salesPagination" hidden>
+            <button class="btn btn-secondary btn-sm" id="salesPrevBtn" type="button">Previous</button>
+            <span class="sub" id="salesPageLabel" aria-live="polite"></span>
+            <button class="btn btn-secondary btn-sm" id="salesNextBtn" type="button">Next</button>
+          </div>
           <div class="empty" id="salesEmpty">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14l-3-2-3 2-3-2-3 2-3-2Z"/></svg>
             <h4>No sales yet</h4><p>Completed transactions will appear here.</p>
