@@ -16,6 +16,8 @@
   let products = [];
   let stockLogs = [];
   let saleCounter = 1024;
+  const SALES_PAGE_SIZE = 5;
+  let salesHistoryPage = 1;
   let activeCategory = "All";
   let payMethod = "cash";
   let productSalesDay = "today";
@@ -123,8 +125,8 @@
   async function getSupabaseClient(){
     if (supabaseClient) return supabaseClient;
     const config = window.SUPABASE_CONFIG || {};
-    const url = config.url || "https://nozisfmqzkeywefrqkok.supabase.co";
-    const anonKey = config.anonKey || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk";
+    const url = config.url || "https://mpkmtcdsubopnrpyqwel.supabase.co";
+    const anonKey = config.anonKey || "sb_publishable_UL5Bm_SqkJTmRSmcO_NdRA_1qoOksRk";
     if (!window.supabase || !url || !anonKey) return null;
     supabaseClient = window.supabase.createClient(url, anonKey);
     return supabaseClient;
@@ -160,7 +162,7 @@
     }
 
     try {
-      const { data: remoteProducts, error: productError } = await client.from("pos_products").select("*").order("id", { ascending: true });
+      const { data: remoteProducts, error: productError } = await client.from("pos_products").select("id,name,sku,category,price,cost,stock,threshold").order("id", { ascending: true });
       if (!productError && Array.isArray(remoteProducts)) {
         const localOrder = products.map(p => p.id);
         products = remoteProducts.map(normalizeProduct);
@@ -177,13 +179,13 @@
         hasSupabaseData = true;
       }
 
-      const { data: remoteSales, error: salesError } = await client.from("pos_sales").select("*").order("created_at", { ascending: false });
+      const { data: remoteSales, error: salesError } = await client.from("pos_sales").select("id,created_at,items,subtotal,tax,total,payment,tendered,change,cashier,reference_code").order("created_at", { ascending: false });
       if (!salesError && Array.isArray(remoteSales)) {
         sales = remoteSales.map(normalizeSale);
         hasSupabaseData = true;
       }
 
-      const { data: remoteVoidSales, error: voidSalesError } = await client.from("pos_void_sales").select("*").order("created_at", { ascending: false });
+      const { data: remoteVoidSales, error: voidSalesError } = await client.from("pos_void_sales").select("id,created_at,items,subtotal,tax,total,payment,tendered,change,cashier,reference_code,voided_at").order("created_at", { ascending: false });
       if (!voidSalesError && Array.isArray(remoteVoidSales)) {
         voidedSales = remoteVoidSales.map(item => {
           const normalized = normalizeSale(item);
@@ -193,7 +195,7 @@
         });
       }
 
-      const { data: remoteLogs, error: logError } = await client.from("pos_stock_logs").select("*").order("created_at", { ascending: false });
+      const { data: remoteLogs, error: logError } = await client.from("pos_stock_logs").select("id,product_id,product_name,previous_stock,added_stock,new_stock,note,created_at").order("created_at", { ascending: false }).limit(8);
       if (!logError && Array.isArray(remoteLogs)) {
         stockLogs = remoteLogs.map(normalizeStockLog);
       }
@@ -209,12 +211,14 @@
     saveLocalData();
   }
 
-  async function syncPosData(){
+  async function syncPosData({ sale = null, voidedSale = null, productsToSync = [] } = {}){
     const client = await getSupabaseClient();
     if (!client) return;
     try {
-      await client.from("pos_products").upsert(products.map(p=>({ id: p.id, name: p.name, sku: p.sku, category: p.category, price: p.price, cost: p.cost, stock: p.stock, threshold: p.threshold })), { onConflict: "id" });
-      for (const sale of sales) {
+      if (productsToSync.length) {
+        await client.from("pos_products").upsert(productsToSync.map(p=>({ id: p.id, name: p.name, sku: p.sku, category: p.category, price: p.price, cost: p.cost, stock: p.stock, threshold: p.threshold })), { onConflict: "id" });
+      }
+      if (sale) {
         await client.from("pos_sales").upsert([{
           id: sale.id,
           created_at: sale.time instanceof Date ? sale.time.toISOString() : sale.time,
@@ -229,19 +233,19 @@
           reference_code: sale.reference_code || null,
         }], { onConflict: "id" });
       }
-      for (const sale of voidedSales) {
+      if (voidedSale) {
         await client.from("pos_void_sales").upsert([{
-          id: sale.id,
-          created_at: sale.time instanceof Date ? sale.time.toISOString() : sale.time,
-          items: sale.items,
-          subtotal: sale.subtotal,
-          tax: sale.tax,
-          total: sale.total,
-          payment: sale.payment,
-          tendered: sale.tendered,
-          change: sale.change,
-          cashier: sale.cashier,
-          reference_code: sale.reference_code || null,
+          id: voidedSale.id,
+          created_at: voidedSale.time instanceof Date ? voidedSale.time.toISOString() : voidedSale.time,
+          items: voidedSale.items,
+          subtotal: voidedSale.subtotal,
+          tax: voidedSale.tax,
+          total: voidedSale.total,
+          payment: voidedSale.payment,
+          tendered: voidedSale.tendered,
+          change: voidedSale.change,
+          cashier: voidedSale.cashier,
+          reference_code: voidedSale.reference_code || null,
           voided_at: new Date().toISOString(),
         }], { onConflict: "id" });
       }
@@ -293,6 +297,7 @@
     }
     const sale = sales[saleIndex];
     if (!confirm(`Void sale #${sale.id}? This will return items to stock.`)) return;
+    const changedProductIds = new Set((sale.items || []).map(item => Number(item.productId)));
 
     sales.splice(saleIndex, 1);
     sale.voided = true;
@@ -318,7 +323,10 @@
     saveLocalData();
     await deleteSaleRemote(sale.id);
     try {
-      await syncPosData();
+      await syncPosData({
+        voidedSale: sale,
+        productsToSync: products.filter(product => changedProductIds.has(Number(product.id))),
+      });
     } catch (err) {
       console.warn("Unable to sync voided sale to Supabase", err);
     }
@@ -1215,6 +1223,9 @@
       if (!p) return null;
       return {productId:Number(p.id), name:p.name, sku:p.sku, price:p.price, qty:Number(c.qty)};
     }).filter(Boolean);
+    const changedProductIds = new Set(saleItems
+      .filter(item => !isRentProduct(getProductById(item.productId)))
+      .map(item => item.productId));
     // decrement stock only for inventory items; rent items do not track stock changes
     if (typeof window !== 'undefined' && typeof window.applyInventoryDeduction === 'function') {
       window.applyInventoryDeduction(products, cart);
@@ -1248,7 +1259,10 @@
 
     saveLocalData();
     try {
-      await syncPosData();
+      await syncPosData({
+        sale,
+        productsToSync: products.filter(product => changedProductIds.has(Number(product.id))),
+      });
     } catch (err) {
       console.warn("Unable to sync completed sale to Supabase", err);
     }
@@ -1405,7 +1419,6 @@
     products.splice(destIndex, 0, moved);
     saveLocalData();
     renderInventory();
-    try { syncPosData(); } catch (err) { console.warn('Unable to sync product order', err); }
   }
 
   $("#invTableBody").addEventListener("dragstart", e=>{
@@ -1586,11 +1599,6 @@
         cart = cart.filter(c=>c.productId!==id);
         saveLocalData();
         await deleteProductRemote(id);
-        try {
-          await syncPosData();
-        } catch (err) {
-          console.warn("Could not sync product deletion to Supabase", err);
-        }
         renderInventory();
         renderProducts();
         renderDashboard();
@@ -1635,9 +1643,18 @@
 
   function renderSales(){
     const visibleSales = window.getVisibleSalesForHistory ? window.getVisibleSalesForHistory(sales) : sales.filter(s => !(s.voided || s.status === "voided"));
+    const pageCount = Math.max(1, Math.ceil(visibleSales.length / SALES_PAGE_SIZE));
+    salesHistoryPage = Math.min(salesHistoryPage, pageCount);
+    const pageStart = (salesHistoryPage - 1) * SALES_PAGE_SIZE;
+    const pageSales = visibleSales.slice(pageStart, pageStart + SALES_PAGE_SIZE);
+
     $("#salesCount").textContent = visibleSales.length ? `${visibleSales.length} total` : "";
     $("#salesEmpty").hidden = visibleSales.length>0;
-    $("#salesTableBody").innerHTML = visibleSales.map(s=>{
+    $("#salesPagination").hidden = visibleSales.length <= SALES_PAGE_SIZE;
+    $("#salesPageLabel").textContent = `Page ${salesHistoryPage} of ${pageCount}`;
+    $("#salesPrevBtn").disabled = salesHistoryPage <= 1;
+    $("#salesNextBtn").disabled = salesHistoryPage >= pageCount;
+    $("#salesTableBody").innerHTML = pageSales.map(s=>{
       const itemCount = s.items.reduce((a,i)=>a+i.qty,0);
       const saleDate = new Date(s.time);
       return `<tr>
@@ -1652,6 +1669,15 @@
       </tr>`;
     }).join("");
   }
+  $("#salesPrevBtn").addEventListener("click", ()=>{
+    if (salesHistoryPage <= 1) return;
+    salesHistoryPage--;
+    renderSales();
+  });
+  $("#salesNextBtn").addEventListener("click", ()=>{
+    salesHistoryPage++;
+    renderSales();
+  });
   $("#salesTableBody").addEventListener("click", e=>{
     const b = e.target.closest("button[data-id]");
     if(!b) return;
