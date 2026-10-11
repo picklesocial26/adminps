@@ -124,9 +124,9 @@
 
   async function getSupabaseClient(){
     if (supabaseClient) return supabaseClient;
-    const config = window.SUPABASE_CONFIG || {};
-    const url = config.url || "https://mpkmtcdsubopnrpyqwel.supabase.co";
-    const anonKey = config.anonKey || "sb_publishable_UL5Bm_SqkJTmRSmcO_NdRA_1qoOksRk";
+    const config = window.POS_SUPABASE_CONFIG || {};
+    const url = config.url;
+    const anonKey = config.anonKey;
     if (!window.supabase || !url || !anonKey) return null;
     supabaseClient = window.supabase.createClient(url, anonKey);
     return supabaseClient;
