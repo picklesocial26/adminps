@@ -10,8 +10,12 @@
   }
 
   function getSalesForMonth(sales, date = new Date()) {
-    const year = date.getFullYear();
-    const month = date.getMonth();
+    const selectedMonth = typeof date === 'string'
+      ? /^(\d{4})-(\d{2})$/.exec(date)
+      : null;
+    const year = selectedMonth ? Number(selectedMonth[1]) : date.getFullYear();
+    const month = selectedMonth ? Number(selectedMonth[2]) - 1 : date.getMonth();
+    if (month < 0 || month > 11) return [];
 
     return getVisibleSalesForHistory(sales).filter(sale => {
       const saleDate = new Date(sale.time || sale.created_at);
