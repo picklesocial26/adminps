@@ -1621,17 +1621,42 @@
   });
 
   /* ---------------- Sales History ---------------- */
+  function getSalesHistoryMonth(){
+    const monthFilter = $("#salesMonthFilter");
+    const now = new Date();
+    if (monthFilter && !monthFilter.value) {
+      monthFilter.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    }
+    return monthFilter?.value || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function getMonthlySalesHistory(){
+    const selectedMonth = getSalesHistoryMonth();
+    if (window.getSalesForMonth) return window.getSalesForMonth(sales, selectedMonth);
+    const [year, month] = selectedMonth.split("-").map(Number);
+    return sales.filter(sale => {
+      const saleDate = new Date(sale.time);
+      return !Number.isNaN(saleDate.getTime())
+        && saleDate.getFullYear() === year
+        && saleDate.getMonth() === month - 1
+        && !(sale.voided || sale.status === "voided");
+    });
+  }
+
   function exportSalesToExcel(){
     if (typeof XLSX === 'undefined') {
       toast('Office export unavailable. Ensure XLSX is loaded.', false);
       return;
     }
 
+    const monthlySales = getMonthlySalesHistory();
     const rows = [
+      ['Monthly Sales Report', getSalesHistoryMonth()],
+      [],
       ['Receipt', 'Date', 'Time', 'Items', 'Payment', 'Ref', 'Total', 'Cashier']
     ];
 
-    sales.forEach(s => {
+    monthlySales.forEach(s => {
       const saleDate = new Date(s.time);
       const itemCount = s.items.reduce((a,i)=>a+i.qty,0);
       rows.push([
@@ -1645,23 +1670,27 @@
         s.cashier || 'Pickle Social'
       ]);
     });
+    const totalRevenue = monthlySales.reduce((total, sale) => total + Number(sale.total || 0), 0);
+    rows.push([]);
+    rows.push(['Monthly total', '', '', '', '', '', totalRevenue, '']);
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sales');
-    const fileName = `COUNTR-Sales-History-${new Date().toISOString().slice(0,10)}.xlsx`;
+    const fileName = `COUNTR-Sales-Report-${getSalesHistoryMonth()}.xlsx`;
     XLSX.writeFile(wb, fileName);
     toast('Sales export ready', true);
   }
 
   function renderSales(){
-    const visibleSales = window.getVisibleSalesForHistory ? window.getVisibleSalesForHistory(sales) : sales.filter(s => !(s.voided || s.status === "voided"));
+    const visibleSales = getMonthlySalesHistory();
     const pageCount = Math.max(1, Math.ceil(visibleSales.length / SALES_PAGE_SIZE));
     salesHistoryPage = Math.min(salesHistoryPage, pageCount);
     const pageStart = (salesHistoryPage - 1) * SALES_PAGE_SIZE;
     const pageSales = visibleSales.slice(pageStart, pageStart + SALES_PAGE_SIZE);
 
-    $("#salesCount").textContent = visibleSales.length ? `${visibleSales.length} total` : "";
+    const monthlyRevenue = visibleSales.reduce((total, sale) => total + Number(sale.total || 0), 0);
+    $("#salesCount").textContent = `${visibleSales.length} sales • ${money(monthlyRevenue)} total`;
     $("#salesEmpty").hidden = visibleSales.length>0;
     $("#salesPagination").hidden = visibleSales.length <= SALES_PAGE_SIZE;
     $("#salesPageLabel").textContent = `Page ${salesHistoryPage} of ${pageCount}`;
@@ -1682,6 +1711,10 @@
       </tr>`;
     }).join("");
   }
+  $("#salesMonthFilter").addEventListener("change", () => {
+    salesHistoryPage = 1;
+    renderSales();
+  });
   $("#salesPrevBtn").addEventListener("click", ()=>{
     if (salesHistoryPage <= 1) return;
     salesHistoryPage--;
