@@ -275,7 +275,8 @@ async function registerPendingBookingNotifications() {
 
   if ('serviceWorker' in navigator) {
     try {
-      const registration = await navigator.serviceWorker.register('service-worker.js');
+      await navigator.serviceWorker.register('service-worker.js');
+      const registration = await navigator.serviceWorker.ready;
       
       if ('periodicSync' in registration) {
         try {
@@ -650,8 +651,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   // Initialize Supabase
   const supabaseConfig = window.SUPABASE_CONFIG || {};
-  const SUPABASE_URL = supabaseConfig.url || "https://nozisfmqzkeywefrqkok.supabase.co";
-  const SUPABASE_ANON_KEY = supabaseConfig.anonKey || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vemlzZm1xemtleXdlZnJxa29rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzY2NzcsImV4cCI6MjA5NDE1MjY3N30.9CyqA4zZ9o5glyVl40Baah9ce-mqPIB3fAi2wp2-Ppk";
+  const SUPABASE_URL = supabaseConfig.url || "https://mpkmtcdsubopnrpyqwel.supabase.co";
+  const SUPABASE_ANON_KEY = supabaseConfig.anonKey || "sb_publishable_UL5Bm_SqkJTmRSmcO_NdRA_1qoOksRk";
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     showToast('Supabase configuration missing. Please set window.SUPABASE_CONFIG.');
@@ -3746,7 +3747,6 @@ document.addEventListener('keydown', (e) => {
     closeCalendarModal();
   }
 });
-
 
 
 
