@@ -646,9 +646,22 @@
     // Low stock list
     const low = products.filter(p=> !isRentProduct(p) && p.stock<=p.threshold);
 
-    // category chart
+    // Current-month category chart
+    const monthlySales = window.getSalesForMonth
+      ? window.getSalesForMonth(sales)
+      : sales.filter(sale => {
+          const saleDate = new Date(sale.time);
+          const now = new Date();
+          return saleDate.getFullYear() === now.getFullYear()
+            && saleDate.getMonth() === now.getMonth();
+        });
+    const categoryChartTitle = document.querySelector("#catChart")?.parentElement
+      ?.querySelector(".panel-head h3");
+    if (categoryChartTitle) {
+      categoryChartTitle.textContent = `Sales by category — ${new Date().toLocaleDateString([], { month: "long", year: "numeric" })}`;
+    }
     const categoryBreakdown = window.buildCategorySalesBreakdown
-      ? window.buildCategorySalesBreakdown(sales, products, Object.keys(CATS))
+      ? window.buildCategorySalesBreakdown(monthlySales, products, Object.keys(CATS))
       : {};
     const byCat = Object.keys(CATS).reduce((acc, category) => {
       acc[category] = categoryBreakdown[category]?.totalRevenue || 0;
@@ -666,7 +679,7 @@
         <div style="width:64px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;flex-shrink:0;">${money(val)}</div>
       </div>`;
     }).join("");
-    $("#catChart").innerHTML = sales.length ? catHtml : `<div class="empty" style="padding:20px 0;"><p>No sales recorded today yet — head to Point of Sale to ring up an order.</p></div>`;
+    $("#catChart").innerHTML = monthlySales.length ? catHtml : `<div class="empty" style="padding:20px 0;"><p>No sales recorded this month yet — head to Point of Sale to ring up an order.</p></div>`;
 
     const breakdownHtml = Object.keys(CATS).map(category => {
       const breakdown = categoryBreakdown[category];
