@@ -9,6 +9,18 @@
     return (sales || []).filter(sale => !isSaleVoided(sale));
   }
 
+  function getSalesForMonth(sales, date = new Date()) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+
+    return getVisibleSalesForHistory(sales).filter(sale => {
+      const saleDate = new Date(sale.time || sale.created_at);
+      return !Number.isNaN(saleDate.getTime())
+        && saleDate.getFullYear() === year
+        && saleDate.getMonth() === month;
+    });
+  }
+
   function buildCategorySalesBreakdown(sales, products, categories) {
     const byCategory = {};
 
@@ -59,10 +71,11 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { buildCategorySalesBreakdown, getVisibleSalesForHistory, isSaleVoided };
+    module.exports = { buildCategorySalesBreakdown, getSalesForMonth, getVisibleSalesForHistory, isSaleVoided };
   }
 
   global.buildCategorySalesBreakdown = buildCategorySalesBreakdown;
+  global.getSalesForMonth = getSalesForMonth;
   global.getVisibleSalesForHistory = getVisibleSalesForHistory;
   global.isSaleVoided = isSaleVoided;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
