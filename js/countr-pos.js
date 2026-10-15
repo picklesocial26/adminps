@@ -385,6 +385,25 @@
   $("#menuBtn").addEventListener("click", ()=> $("#sidebar").classList.toggle("open"));
   $("#closeSidebarBtn").addEventListener("click", ()=> $("#sidebar").classList.remove("open"));
 
+  const gcashQrModal = $("#gcashQrModal");
+  const gcashQrBtn = $("#gcashQrBtn");
+  const gcashQrClose = $("#gcashQrClose");
+  function closeGcashQrModal(){
+    gcashQrModal.hidden = true;
+    gcashQrBtn.focus();
+  }
+  gcashQrBtn.addEventListener("click", ()=>{
+    gcashQrModal.hidden = false;
+    gcashQrClose.focus();
+  });
+  gcashQrClose.addEventListener("click", closeGcashQrModal);
+  gcashQrModal.addEventListener("click", e=>{
+    if (e.target === gcashQrModal) closeGcashQrModal();
+  });
+  document.addEventListener("keydown", e=>{
+    if (e.key === "Escape" && !gcashQrModal.hidden) closeGcashQrModal();
+  });
+
   /* ---------------- Clock ---------------- */
   function tickClock(){
     const now = new Date();
