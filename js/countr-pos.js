@@ -132,6 +132,47 @@
     return supabaseClient;
   }
 
+  const dbConnectionButton = $("#dbConnectionButton");
+  const dbConnectionLabel = $("#dbConnectionLabel");
+  const dbConnectionDetails = $("#dbConnectionDetails");
+  function getDatabaseProjectHost(){
+    const url = window.POS_SUPABASE_CONFIG?.url;
+    try {
+      return url ? new URL(url).host : "Supabase project not configured";
+    } catch (err) {
+      return "Invalid Supabase project URL";
+    }
+  }
+  function setDatabaseConnectionStatus(state, label, details){
+    dbConnectionButton.dataset.state = state;
+    dbConnectionLabel.textContent = label;
+    dbConnectionDetails.textContent = details;
+  }
+  async function checkDatabaseConnection(){
+    dbConnectionButton.disabled = true;
+    setDatabaseConnectionStatus("checking", "Checking…", getDatabaseProjectHost());
+    try {
+      const client = await getSupabaseClient();
+      if (!client) {
+        setDatabaseConnectionStatus("error", "Offline", "Supabase client or POS configuration is missing.");
+        return;
+      }
+      const { error } = await client.from("pos_products").select("id").limit(1);
+      if (error) {
+        console.warn("Supabase connection check failed", error);
+        setDatabaseConnectionStatus("error", "Offline", `${getDatabaseProjectHost()} · ${error.message}`);
+        return;
+      }
+      setDatabaseConnectionStatus("connected", "Connected", `${getDatabaseProjectHost()} · Click to recheck`);
+    } catch (err) {
+      console.warn("Supabase connection check failed", err);
+      setDatabaseConnectionStatus("error", "Offline", `${getDatabaseProjectHost()} · ${err.message || "Connection request failed"}`);
+    } finally {
+      dbConnectionButton.disabled = false;
+    }
+  }
+  dbConnectionButton.addEventListener("click", checkDatabaseConnection);
+
   async function loadPosData(){
     try {
       const storedProducts = localStorage.getItem("countr-pos-products");
@@ -154,8 +195,18 @@
       console.warn("Local storage unavailable", err);
     }
 
-    const client = await getSupabaseClient();
+    setDatabaseConnectionStatus("checking", "Checking…", getDatabaseProjectHost());
+    let client;
+    try {
+      client = await getSupabaseClient();
+    } catch (err) {
+      console.warn("Unable to initialize Supabase POS client", err);
+      setDatabaseConnectionStatus("error", "Offline", `${getDatabaseProjectHost()} · ${err.message || "Client initialization failed"}`);
+    }
     if (!client) {
+      if (dbConnectionButton.dataset.state !== "error") {
+        setDatabaseConnectionStatus("error", "Offline", "Supabase client or POS configuration is missing.");
+      }
       saleCounter = Math.max(1024, sales.reduce((max, sale) => Math.max(max, Number(sale.id || 0)), 1024) + 1);
       saveLocalData();
       return;
@@ -163,7 +214,11 @@
 
     try {
       const { data: remoteProducts, error: productError } = await client.from("pos_products").select("id,name,sku,category,price,cost,stock,threshold").order("id", { ascending: true });
-      if (!productError && Array.isArray(remoteProducts)) {
+      if (productError) {
+        console.warn("Unable to load POS products from Supabase", productError);
+        setDatabaseConnectionStatus("error", "Offline", `${getDatabaseProjectHost()} · ${productError.message}`);
+      } else if (Array.isArray(remoteProducts)) {
+        setDatabaseConnectionStatus("connected", "Connected", `${getDatabaseProjectHost()} · Click to recheck`);
         const localOrder = products.map(p => p.id);
         products = remoteProducts.map(normalizeProduct);
         if (localOrder.length) {
@@ -180,12 +235,14 @@
       }
 
       const { data: remoteSales, error: salesError } = await client.from("pos_sales").select("id,created_at,items,subtotal,tax,total,payment,tendered,change,cashier,reference_code").order("created_at", { ascending: false });
+      if (salesError) console.warn("Unable to load POS sales from Supabase", salesError);
       if (!salesError && Array.isArray(remoteSales)) {
         sales = remoteSales.map(normalizeSale);
         hasSupabaseData = true;
       }
 
       const { data: remoteVoidSales, error: voidSalesError } = await client.from("pos_void_sales").select("id,created_at,items,subtotal,tax,total,payment,tendered,change,cashier,reference_code,voided_at").order("created_at", { ascending: false });
+      if (voidSalesError) console.warn("Unable to load voided POS sales from Supabase", voidSalesError);
       if (!voidSalesError && Array.isArray(remoteVoidSales)) {
         voidedSales = remoteVoidSales.map(item => {
           const normalized = normalizeSale(item);
@@ -196,11 +253,13 @@
       }
 
       const { data: remoteLogs, error: logError } = await client.from("pos_stock_logs").select("id,product_id,product_name,previous_stock,added_stock,new_stock,note,created_at").order("created_at", { ascending: false }).limit(8);
+      if (logError) console.warn("Unable to load POS stock logs from Supabase", logError);
       if (!logError && Array.isArray(remoteLogs)) {
         stockLogs = remoteLogs.map(normalizeStockLog);
       }
     } catch (err) {
       console.warn("Supabase POS sync unavailable, using local data", err);
+      setDatabaseConnectionStatus("error", "Offline", `${getDatabaseProjectHost()} · ${err.message || "Connection request failed"}`);
     }
 
     if (!products.length && !sales.length) {
