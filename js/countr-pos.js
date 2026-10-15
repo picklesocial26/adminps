@@ -1391,7 +1391,10 @@
   $("#receiptModal").addEventListener("click", e=>{ if(e.target===$("#receiptModal")) $("#receiptModal").hidden=true; });
 
   $("#selectedDateDetailsClose").addEventListener("click", ()=> $("#selectedDateDetailsModal").hidden = true);
-  $("#selectedDateDetailsCloseBtn").addEventListener("click", ()=> $("#selectedDateDetailsModal").hidden = true);
+  const selectedDateDetailsCloseBtn = $("#selectedDateDetailsCloseBtn");
+  if (selectedDateDetailsCloseBtn) {
+    selectedDateDetailsCloseBtn.addEventListener("click", ()=> $("#selectedDateDetailsModal").hidden = true);
+  }
   $("#selectedDateDetailsModal").addEventListener("click", e=>{ if(e.target===$("#selectedDateDetailsModal")) $("#selectedDateDetailsModal").hidden=true; });
 
   [
