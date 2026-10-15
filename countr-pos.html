@@ -64,6 +64,13 @@
           <div class="l1">Cashier</div>
           <div class="l2">Pickle Social</div>
         </div>
+        <div class="db-connection">
+          <button class="db-connection-button" id="dbConnectionButton" type="button" data-state="checking" aria-live="polite" title="Click to check the database connection">
+            <span class="db-connection-dot" aria-hidden="true"></span>
+            <span id="dbConnectionLabel">Checking…</span>
+          </button>
+          <span class="db-connection-details" id="dbConnectionDetails"></span>
+        </div>
       </div>
     </aside>
 
@@ -366,3 +373,21 @@
         <button class="modal-close" id="selectedDateDetailsClose">✕</button>
       </div>
       <div class="modal-body">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+          <button class="btn selected-date-filter active" id="selectedDateDetailsFilterAll">Total</button>
+          <button class="btn selected-date-filter" id="selectedDateDetailsFilterCash">Cash</button>
+          <button class="btn selected-date-filter" id="selectedDateDetailsFilterGcash">GCash</button>
+        </div>
+        <div id="selectedDateDetailsBody"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="selectedDateDetailsCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+
+  </body>
+  </html>
