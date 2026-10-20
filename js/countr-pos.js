@@ -3,7 +3,7 @@
 
   /* ---------------- Data (Supabase-backed with local fallback) ---------------- */
   const CATS = {
-    "Beverages":"#2563EB", "Snacks":"#EC4899", "Rent":"#F59E0B"
+    "Beverages":"#2563EB", "Snacks":"#EC4899", "Rent":"#F59E0B", "Equipment":"#14B8A6"
   };
 
   const DEFAULT_PRODUCTS = [];
